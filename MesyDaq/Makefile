@@ -1,23 +1,18 @@
 CXX=`root-config --cxx`
-CXXFLAGS=`root-config --cflags` -g -Wall 
-##CXXFLAGS=`root-config --cflags` -pg
+CXXFLAGS=`root-config --cflags` -g -L/usr/lib/CAEN -I/usr/include/CAEN -Wall
 LDFLAGS=`root-config --ldflags`
-##LDFLAGS=`root-config --ldflags` -pg
-LDLIBS=`root-config --glibs`
-SOURCES=MesyDaq.c mesqdc32.c
-OBJECTS=$(SOURCES:.c=.o)
-EXECUTABLE=MesyDaq mesqdc32
+LDLIBS=`root-config --glibs` -lCAENVME
+SOURCES=MesyDaq.cc MQDC32.cc
+OBJECTS=$(SOURCES:.cc=.o)
+EXECUTABLE=MesyDaq
 
 all: $(SOURCES) $(EXECUTABLE)
 
-MesyDaq: MesyDaq.o
+$(EXECUTABLE): $(OBJECTS)
 	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS) 
 
-mesqdc32: mesqdc32.o
-	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
-
-.c.o:
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(CFLAGS) -W -Wall -c $<
+.cc.o:
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(CFLAGS) -W -c $<
 
 clean:
 	rm -f ./*~ $(OBJECTS) ./MesyDaq
