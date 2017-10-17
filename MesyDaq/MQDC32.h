@@ -24,7 +24,12 @@
 
 // Interrupt
 #define MQDC32_IRQ_LEVEL               0x6010      /* R/W  def:0 D16 */
- 
+#define MQDC32_IRQ_VECTOR              0x6012      /* RW def:0 */
+#define MQDC32_IRQ_TEST                0x6014      /* W */
+#define MQDC32_IRQ_RESET               0x6016      /* W */
+#define MQDC32_IRQ_DATA_THRESHOLD      0x6018      /* RW def:1 */
+#define MQDC32_MAX_TRANSFER_DATA       0x601A      /* RW def:1 */
+
 // MCST, CBLT
 #define MQDC32_CBLT_MCST_CTL           0x6020      /* R/W  def:0 */ 
 #define MQDC32_CBLT_ADD                0x6022      /* R/W def:0xAA A31..A25 CBLT add */ 
@@ -115,16 +120,12 @@
 
 CVErrorCodes MQDC32_Read_Register(int32_t Handle, uint32_t address, uint32_t *data);
 CVErrorCodes MQDC32_Write_Register(int32_t Handle, uint32_t address, uint32_t data);
-
-// stop acquisition
-// set multievent register
-// set irq
-// reset fifo
-// start acquisition
-// read register
-// read block transfer buffer
-// write reset register
-
+CVErrorCodes MQDC32_Read_BLT(int32_t Handle, uint32_t address, uint32_t *data);
+CVErrorCodes MQDC32_Setup(int32_t Handle);
+CVErrorCodes MQDC32_Start_Acquisition(int32_t Handle);
+CVErrorCodes MQDC32_Num_Words(int32_t Handle, uint32_t * data);
+CVErrorCodes MQDC32_Reset_Data_Buffer(int32_t Handle);
+CVErrorCodes MQDC32_Read_Word(int32_t Handle, uint32_t * data);
 
 #endif  //  MQDC32_H
 
