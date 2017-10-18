@@ -31,9 +31,9 @@ CVErrorCodes MQDC32_Setup(int32_t Handle)
   if (ret != 0) { std::cout << "=======Error setting multievent off=========" << std::endl; return ret; }
   ret = MQDC32_Write_Register(Handle, MQDC32_BASE + MQDC32_MARKING_TYPE, 0x1);
   if (ret != 0) { std::cout << "===========Error setting EoE mark===========" << std::endl; return ret; }
-  ret = MQDC32_Write_Register(Handle, MQDC32_BASE + MQDC32_IRQ_VECTOR, 0x1);
+  ret = MQDC32_Write_Register(Handle, MQDC32_BASE + MQDC32_IRQ_VECTOR, 0x0);
   if (ret != 0) { std::cout << "==========Error setting IRQ vector==========" << std::endl; return ret; }
-  ret = MQDC32_Write_Register(Handle, MQDC32_BASE + MQDC32_IRQ_LEVEL, 0x1);
+  ret = MQDC32_Write_Register(Handle, MQDC32_BASE + MQDC32_IRQ_LEVEL, cvIRQ1);
   if (ret != 0) { std::cout << "==========Error setting IRQ level===========" << std::endl; return ret; }
   ret = MQDC32_Write_Register(Handle, MQDC32_BASE + MQDC32_READOUT_RESET, 0x0);
   if (ret != 0) { std::cout << "===========Error resetting readout==========" << std::endl; return ret; }
@@ -60,10 +60,3 @@ CVErrorCodes MQDC32_Read_Word(int32_t Handle, uint32_t * data)
   return MQDC32_Read_BLT(Handle, MQDC32_BASE + MQDC32_EVENT_READOUT_BUFFER, data);
 }
 
-// Do Acquisition:::
-//     start acquisition 0x603A
-//     while loop:
-//         caenvme_irqwait
-//         read 0x6030 for event length (D16)
-//         read from buffer event length + 1 (BLT32)
-//         set 0x6034 to reset

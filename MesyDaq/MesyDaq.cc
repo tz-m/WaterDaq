@@ -1,119 +1,163 @@
-#include "MQDC32.h"
-#include "CAENVMElib.h"
-#include <iostream>
-#include <unistd.h>
-
-uint32_t GetN(uint32_t val, uint32_t offset, uint32_t N)
-{
-  return ((val>>offset) & ((1<<N)-1));
-}
-
-void ParseWord(uint32_t word)
-{
-  if (GetN(word, 30, 2) == 1)
-    {
-      std::cout << "=========Header========" << std::endl;
-      std::cout << "num following words = " << GetN(word,0,12) << std::endl;
-      std::cout << "fill = " << GetN(word, 12, 3) << std::endl;
-      std::cout << "module id = " << GetN(word, 16, 8) << std::endl;
-      std::cout << "subheader = " << GetN(word, 24, 6) << std::endl;
-      std::cout << "hsig = " << GetN(word, 30, 2) << std::endl;
-      std::cout << "=======================" << std::endl;
-    }
-  if (GetN(word, 30, 2) == 0)
-    {
-      if (GetN(word, 16, 5) == 0 && GetN(word, 21, 9) != 32) return;
-      if (GetN(word, 16, 5) == 0 || GetN(word, 16, 5) == 1)
-	{
-	  std::cout << "==========Data=========" << std::endl;
-	  std::cout << "adc = " << GetN(word, 0, 12) << std::endl;
-	  std::cout << "overflow = " << GetN(word, 15, 1) << std::endl;
-	  std::cout << "channel = " << GetN(word, 16, 5) << std::endl;
-	  std::cout << "fix = " << GetN(word, 21, 9) << std::endl;
-	  std::cout << "dsig = " << GetN(word, 30, 2) << std::endl;
-	  std::cout << "=======================" << std::endl;
-	}
-    }
-  if (GetN(word, 30, 2) == 3)
-    {
-      std::cout << "==========EoE==========" << std::endl;
-      std::cout << "timestamp = " << GetN(word, 0, 30) << std::endl;
-      std::cout << "esig = " << GetN(word, 30, 2) << std::endl;
-      std::cout << "=======================" << std::endl;
-    }
-}
+#include "MesyDaq.h"
 
 int main(int argc, char ** argv)
 {
-  std::cout << "argc=" << argc << std::endl;
-  for (int i = 0; i < argc; ++i)
-    std::cout << "argv[" << i << "]=" << argv[i] << std::endl;
+  EnableChannel chans;
+  uint32_t NumEvents;
+  uint32_t Delay = 0.0;
+  bool chanflag = false;
+  bool numflag = false;
+  bool delayflag = false;
+  bool Verbose = false;
+  for (int i = 1; i < argc; ++i)
+    {
+      if (!strcmp(argv[i],"-n"))
+	{
+	  if (i+2 > argc)
+	    {
+	      std::cout << "need to specify a number!" << std::endl;
+	      return 0;
+	    }
+	  NumEvents = std::stod(argv[i+1]);
+	  numflag = true;
+	  ++i;
+	}
+      else if (!strcmp(argv[i],"-d"))
+	{
+	  if (i+2 > argc)
+	    {
+	      std::cout << "need to specify a delay (in microseconds)!" << std::endl;
+	      return 0;
+	    }
+	  Delay = std::stod(argv[i+1]);
+	  delayflag = true;
+	  ++i;
+	}
+      else if (!strcmp(argv[i],"-v"))
+	{
+	  Verbose = true;
+	}
+      else 
+	{
+	  chans.ch[std::stoul(argv[i])] = true;
+	  chanflag = true;
+	}
+    }
+  if (!(numflag && chanflag && delayflag))
+    {
+      std::cout << "I need more information!!!" << std::endl
+		<< "  Tell me how many events to record:" << std::endl
+		<< "     -n [number]" << std::endl
+		<< "  and the channels which you want me to record" << std::endl
+		<< "     chA chB chC ..." << std::endl
+		<< "  and the delay time between recorded events" << std::endl
+		<< "     -d [number of microseconds]" << std::endl;
+      return 0;
+    }
+
+  TFile * fileout = TFile::Open("spec.root","RECREATE");
+  UInt_t adc;
+  UInt_t overflow;
+  UInt_t channel;
+  //UInt_t timestamp;
+  TTree * tree = new TTree("qdc","MQDC-32 Pulse Data");
+  tree->Branch("adc",&adc,"adc/i");
+  tree->Branch("overflow",&overflow,"overflow/i");
+  tree->Branch("channel",&channel,"channel/i");
+  //tree->Branch("timestamp",&timestamp,"timestamp/i");
+
+  struct sigaction sigIntHandler;
+  sigIntHandler.sa_handler = handler;
+  sigemptyset(&sigIntHandler.sa_mask);
+  sigIntHandler.sa_flags = 0;
+  sigaction(SIGINT, &sigIntHandler, NULL);
 
   int32_t handle;
   CVErrorCodes ret;
-  ret = CAENVME_Init(cvV1718, 0, 0, &handle);
-  //std::cout << "initialise=" << ret << std::endl;
-  if (ret == cvSuccess)
+  uint32_t n = 0;
+  try
     {
-      ret = MQDC32_Setup(handle);
-      if (ret != cvSuccess) { std::cout << "problem in setup" << std::endl; return 0;}
-      ret = MQDC32_Start_Acquisition(handle);
-      if (ret != cvSuccess) { std::cout << "problem starting acquisition" << std::endl; return 0;}
-      int n = 0;
-      while (n < 10)
+      checkApiCall(CAENVME_Init(cvV1718, 0, 0, &handle),"CAENVME_Init");
+      checkApiCall(MQDC32_Setup(handle),"MQDC32_Setup");
+      checkApiCall(MQDC32_Start_Acquisition(handle),"MQDC32_Start_Acquisition");
+      while (n < NumEvents)
 	{
-	  //std::cout << "n=" << n << std::endl;
-	  CAENVME_IRQEnable(handle,0x1);
-	  std::cout << "enable irq " << ret << std::endl;
-	  //std::cout << "cleared output register" << std::endl;
-	  ret = CAENVME_IRQWait(handle,0x1,1000);
-	  std::cout << "wait irq " << ret << std::endl;
-	  /*
-if (ret != cvSuccess)
+	  if (n % (NumEvents/100) == 0) std::cout << "Reading event " << n << std::endl;
+	  unsigned char mask = 0;
+	  while (!(mask & (1<<(cvIRQ1-1))))
 	    {
-	      std::cout << "Failed to acquire any new data before timeout" << std::endl;
-	      return 0;
+	      checkApiCall(CAENVME_IRQCheck(handle, &mask),"CAENVME_IRQCheck");
 	    }
-	  */
-	  //std::cout << "caught IRQ" << std::endl;
-	  uint32_t data;//, nwords;
-	  //MQDC32_Num_Words(handle,&nwords);
-	  //std::cout << "nwords=" << std::hex << nwords << std::dec << std::endl;
-	  ret = cvSuccess;
-	  int i = 0;
+	  uint32_t vector;
+	  checkApiCall(CAENVME_IACKCycle(handle,cvIRQ1,&vector,cvD16),"CAENVME_IACKCycle");
+	  uint32_t word;
 	  do
 	    {
-	      ret = MQDC32_Read_Word(handle,&data);
-	      //if (ret == cvSuccess) ParseWord(data);
-	      ++i;
+	      ret = MQDC32_Read_Word(handle,&word);
+	      if (ret == cvSuccess)
+		{
+		  if (IsHeader(word)) 
+		    {
+		      Header head;
+		      ParseHeaderWord(word,&head);
+		      if (Verbose) head.Print();
+		    }
+		  else if (IsData(word))
+		    {
+		      Data data;
+		      ParseDataWord(word,&data);
+		      if (!chans.q(data.channel)) continue;
+		      if (Verbose) data.Print();
+		      adc = data.adc;
+		      overflow = data.overflow;
+		      channel = data.channel;
+		      tree->Fill();
+		    }
+		  else if (IsEoE(word))
+		    {
+		      EoE eoe;
+		      ParseEoEWord(word,&eoe);
+		      if (Verbose) eoe.Print();
+		    }
+		}
+	      else if (ret == cvBusError) break;
+	      else 
+		{
+		  std::cout << "Error in MQDC32_Read_Word" << std::endl;
+		  throw ret;
+		}
 	    } while (ret == cvSuccess);
-	  //std::cout << "done reading data" << std::endl;
-	  MQDC32_Reset_Data_Buffer(handle);
-	  //std::cout << "reset data buffer" << std::endl;
+	  checkApiCall(MQDC32_Reset_Data_Buffer(handle),"MQDC32_Reset_Data_Buffer");
 	  ++n;
+	  usleep(Delay);
 	}
-
+  checkApiCall(CAENVME_End(handle),"CAENVME_End");
     }
-
-  /*
-
-      ret = MQDC32_Write_Register(handle, MQDC32_BASE+ 0x603A, 0x0);
-      std::cout << "stop acquisition = " << ret << std::endl;
-      ret = MQDC32_Write_Register(handle, 0x11110000 + 0x6008, 0x1);
-      usleep(1000000);
-      std::cout << "soft reset = " << ret << std::endl;
-      uint32_t val = 0;
-      ret = MQDC32_Read_Register(handle, 0x11110000 + 0x6032, &val);
-      std::cout << "read datalenformat masked =" << std::hex << GetN(val,0,8) << std::dec << "  ret=" << ret << std::endl;
-      std::cout << "read datalenformat hex=" << std::hex << val << std::dec << "  dec=" << val << std::endl;
-
-      ret = MQDC32_Write_Register(handle, 0x11110000 + 0x6032, 0x1);
-      std::cout << "write datalenformat ret=" << ret << std::endl;
-      ret = MQDC32_Read_Register(handle, 0x11110000 + 0x6022, &val);
-      std::cout << "read datalenformat masked=" << std::hex << GetN(val,0,8) << std::dec << "  ret=" << ret << std::endl;
-      std::cout << "read datalenformat hex=" << std::hex << val << std::dec << "  dec=" << val << std::endl;
+  catch (CVErrorCodes err)
+    {
+      switch(err) {
+      case cvBusError : std::cout << "Bus error" << std::endl;
+	break;
+      case cvCommError : std::cout << "Comm error" << std::endl;
+	break;
+      case cvGenericError : std::cout << "Generic error" << std::endl;
+	break;
+      case cvInvalidParam : std::cout << "Invalid param" << std::endl;
+	break;
+      case cvTimeoutError : std::cout << "Timeout error" << std::endl;
+	break;
+      default : std::cout << "Success" << std::endl;
+	break;
+      }
     }
-  */
-  ret = CAENVME_End(handle);
-  return 1;
+  catch (std::runtime_error err)
+    {
+      std::cout << err.what() << std::endl;
+      std::cout << "Read " << n << " events" << std::endl;
+    }
+  
+  tree->Write();
+  fileout->Close();
+  
+  return 0;
 }
