@@ -389,11 +389,12 @@ int AgMD2_DAQ::app()
   Header head;
   std::cout << "Header size is " << sizeof(Header) << " bytes long." << std::endl;
 
-  time_t now = time(0);
-  struct tm tstruct;
-  char filename[30];
-  tstruct = *localtime(&now);
-  strftime(filename,sizeof(filename),"DAQ_%Y%m%d_%H%M%S.dat", &tstruct);
+  using namespace date;
+  auto now = std::chrono::system_clock::now();
+  auto dp = floor<days>(now);
+  auto ymd = year_month_day{dp};
+  auto time = make_time(std::chrono::duration_cast<std::chrono::milliseconds>(now-dp));
+  TString filename = TString::Format("DAQ_%04i%02i%02i_%02i%02i%02i.root",(int)(ymd.year()),(unsigned)(ymd.month()),(unsigned)(ymd.day()),time.hours().count(),time.minutes().count(),(unsigned)time.seconds().count());
   
   std::ofstream fileout(filename,std::ios::out|std::ios::binary);
   if (!fileout.is_open())
@@ -600,7 +601,7 @@ int AgMD2_DAQ::app()
 
   fileout.close();
 
-  time_t end = time(0);
+  auto end = std::chrono::system_clock::now();
   std::cout << "Time = " << end-now << " seconds" << std::endl; 
   
   std::cout << "\n " << success << " events recorded." << std::endl;

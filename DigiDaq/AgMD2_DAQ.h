@@ -24,6 +24,8 @@
 #include "RunParams.h"
 #include "ChannelParams.h"
 
+#include "../date/include/date/date.h"
+
 class AgMD2_DAQ
 {
  public:

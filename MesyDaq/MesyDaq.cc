@@ -55,16 +55,37 @@ int main(int argc, char ** argv)
       return 0;
     }
 
-  TFile * fileout = TFile::Open("spec.root","RECREATE");
+  using namespace date;
+  auto now = std::chrono::system_clock::now();
+  auto dp = floor<days>(now);
+  auto ymd = year_month_day{dp};
+  auto time = make_time(std::chrono::duration_cast<std::chrono::milliseconds>(now-dp));
+  TString filename = TString::Format("DAQ_%04i%02i%02i_%02i%02i%02i.root",(int)(ymd.year()),(unsigned)(ymd.month()),(unsigned)(ymd.day()),time.hours().count(),time.minutes().count(),(unsigned)time.seconds().count());
+
+  TFile * fileout = TFile::Open(filename,"RECREATE");
   UInt_t adc;
   UInt_t overflow;
   UInt_t channel;
   //UInt_t timestamp;
+  Int_t year;
+  Int_t month;
+  Int_t day;
+  Int_t hour;
+  Int_t minute;
+  Int_t second;
+  Int_t millisecond;
   TTree * tree = new TTree("qdc","MQDC-32 Pulse Data");
   tree->Branch("adc",&adc,"adc/i");
   tree->Branch("overflow",&overflow,"overflow/i");
   tree->Branch("channel",&channel,"channel/i");
   //tree->Branch("timestamp",&timestamp,"timestamp/i");
+  tree->Branch("year",&year,"year/I");
+  tree->Branch("month",&month,"month/I");
+  tree->Branch("day",&day,"day/I");
+  tree->Branch("hour",&hour,"hour/I");
+  tree->Branch("minute",&minute,"minute/I");
+  tree->Branch("second",&second,"second/I");
+  tree->Branch("millisecond",&millisecond,"millisecond/I");
 
   struct sigaction sigIntHandler;
   sigIntHandler.sa_handler = handler;
@@ -108,9 +129,23 @@ int main(int argc, char ** argv)
 		      ParseDataWord(word,&data);
 		      if (!chans.q(data.channel)) continue;
 		      if (Verbose) data.Print();
+		      
 		      adc = data.adc;
 		      overflow = data.overflow;
 		      channel = data.channel;
+		      
+		      now = std::chrono::system_clock::now();
+		      dp = floor<days>(now);
+		      ymd = year_month_day{dp};
+		      time = make_time(std::chrono::duration_cast<std::chrono::milliseconds>(now-dp));
+		      year = (int)(ymd.year());
+		      month = (unsigned)(ymd.month());
+		      day = (unsigned)(ymd.day());
+		      hour = time.hours().count();
+		      minute = time.minutes().count();
+		      second = time.seconds().count();
+		      millisecond = time.subseconds().count();
+		      
 		      tree->Fill();
 		    }
 		  else if (IsEoE(word))

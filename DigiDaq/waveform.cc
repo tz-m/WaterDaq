@@ -42,7 +42,7 @@ up lots of CPU.
 #include <stdexcept>
 #include <chrono>
 
-#include "./date/include/date/date.h"
+#include "../date/include/date/date.h"
 
 #include "TCanvas.h"
 #include "TH1.h"
