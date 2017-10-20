@@ -2,7 +2,7 @@
 #define MESYDAQ_H
 
 #include "MQDC32.h"
-#include "CAENVMElib.h"
+
 #include <iostream>
 #include <unistd.h>
 #include <string>
@@ -10,6 +10,8 @@
 
 #include "TFile.h"
 #include "TTree.h"
+
+#include "CAENVMElib.h"
 
 #include "../date/include/date/date.h"
 

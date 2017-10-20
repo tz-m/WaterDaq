@@ -1,5 +1,5 @@
 CXX=`root-config --cxx`
-CXXFLAGS=`root-config --cflags` -g -L/usr/lib/CAEN -I/usr/include/CAEN -Wall
+CXXFLAGS=`root-config --cflags` -g -I/usr/include -Wall
 LDFLAGS=`root-config --ldflags`
 LDLIBS=`root-config --glibs` -lCAENVME
 SOURCES=MesyDaq.cc MQDC32.cc
