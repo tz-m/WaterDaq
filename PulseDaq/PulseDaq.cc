@@ -105,6 +105,8 @@ int main(int argc, char ** argv)
     {
       std::cout << "Initializing V1718..." << std::endl;
       checkApiCall(CAENVME_Init(cvV1718, 0, 0, &handle),"CAENVME_Init");
+      checkApiCall(CAENVME_SystemReset(handle),"CAENVME_SystemReset");
+      usleep(1000000);
       std::cout << "             MQDC32..." << std::endl;
       checkApiCall(MQDC32_Setup(handle),"MQDC32_Setup");
       std::cout << "             VX1290A..." << std::endl;
@@ -112,7 +114,7 @@ int main(int argc, char ** argv)
 
       while (n < NumEvents)
 	{
-	  if (NumEvents < 100 || n%(NumEvents/100)==0)
+	  if (NumEvents<100 || Delay>100000 || n%(NumEvents/100)==0)
 	    std::cout << "Reading event " << n << std::endl;
 	  
 	  // The MQDC32 emits an IRQ1 when data is ready, so check for it
@@ -211,31 +213,38 @@ int main(int argc, char ** argv)
 	  ++n;
 	  usleep(Delay);
 	}
-  checkApiCall(CAENVME_End(handle),"CAENVME_End");
+      checkApiCall(CAENVME_End(handle),"CAENVME_End");
     }
   catch (CVErrorCodes err)
     {
       switch(err) {
       case cvBusError : std::cout << "Bus error" << std::endl;
+	checkApiCall(CAENVME_End(handle),"CAENVME_End");
 	break;
       case cvCommError : std::cout << "Comm error" << std::endl;
+	checkApiCall(CAENVME_End(handle),"CAENVME_End");
 	break;
       case cvGenericError : std::cout << "Generic error" << std::endl;
+	checkApiCall(CAENVME_End(handle),"CAENVME_End");
 	break;
       case cvInvalidParam : std::cout << "Invalid param" << std::endl;
+	checkApiCall(CAENVME_End(handle),"CAENVME_End");
 	break;
       case cvTimeoutError : std::cout << "Timeout error" << std::endl;
+	checkApiCall(CAENVME_End(handle),"CAENVME_End");
 	break;
       default : std::cout << "Success" << std::endl;
+	checkApiCall(CAENVME_End(handle),"CAENVME_End");
 	break;
       }
     }
   catch (std::runtime_error err)
     {
       std::cout << err.what() << std::endl;
-      std::cout << "Read " << n << " events" << std::endl;
+      checkApiCall(CAENVME_End(handle),"CAENVME_End");
     }
   
+  std::cout << "Read " << n << " events" << std::endl;
   tree->Write();
   fileout->Close();
   
