@@ -78,10 +78,10 @@ CVErrorCodes VX1290A_Setup(int32_t Handle)
   checkApiCall(VX1290A_Write_OpCode(Handle, VX1290A_TRG_MATCH_OPCODE),"VX1290A_Write_OpCode: Trigger Mode"); 
   
   //Set Window Width to 0x7d0 * 25ns = 50us
-  checkApiCall(VX1290A_TouchWrite_OpCode(Handle, VX1290A_SET_WIN_WIDTH_OPCODE,0x7d0),"VX1290A_TouchWriteOpCode: Set Window Width");
+  checkApiCall(VX1290A_TouchWrite_OpCode(Handle, VX1290A_SET_WIN_WIDTH_OPCODE,VX1290A_WINDOW_WIDTH),"VX1290A_TouchWriteOpCode: Set Window Width");
   
   //Set window offset to 0xfc18 * 25ns = -25us
-  checkApiCall(VX1290A_TouchWrite_OpCode(Handle, VX1290A_SET_WIN_OFFSET_OPCODE,0xFC18),"VX1290A_TouchWriteOpCode: Set Window Offset");
+  checkApiCall(VX1290A_TouchWrite_OpCode(Handle, VX1290A_SET_WIN_OFFSET_OPCODE,VX1290A_WINDOW_OFFSET),"VX1290A_TouchWriteOpCode: Set Window Offset");
 
   //Enable subtraction of trigger time
   checkApiCall(VX1290A_Write_OpCode(Handle, VX1290A_EN_SUB_TRG_OPCODE),"VX1290A_Write_OpCode: Enable trigger time subtraction");
