@@ -1,8 +1,6 @@
 #ifndef VX1290A_H
 #define VX1290A_H
 
-#define VX1290A_BASE 0xEEEE0000
-
 #define VX1290A_OUT_BUFFER_ADD 0x0000
 #define VX1290A_CONTROL_ADD 0x1000
 #define VX1290A_STATUS_ADD 0x1002
@@ -128,13 +126,155 @@
 #define	VX1290A_SET_DLL_CLOCK_OPCODE 0xC800
 #define	VX1290A_READ_TDC_SETUP_SCAN_PATH_OPCODE 0xC800
 
+#define VX1290A_READ_OK 0x2
+#define VX1290A_WRITE_OK 0x1
+
 #include "Common.h"
+#include "User_Settings.h"
+
+typedef struct {
+  uint32_t DATA_READY : 1;
+  uint32_t ALM_FULL : 1;
+  uint32_t FULL : 1;
+  uint32_t TRG_MATCH : 1;
+  uint32_t HEADER_EN : 1;
+  uint32_t TERM_ON : 1;
+  uint32_t ERROR0 : 1;
+  uint32_t ERROR1 : 1;
+  uint32_t ERROR2 : 1;
+  uint32_t ERROR3 : 1;
+  uint32_t BERR : 1;
+  uint32_t PURG : 1;
+  uint32_t RES_0 : 1;
+  uint32_t RES_1 : 1;
+  uint32_t PAIR : 1;
+  uint32_t TRIGGER_LOST : 1;
+} Status;
 
 CVErrorCodes VX1290A_Write_Register(int32_t Handle, uint32_t address, uint32_t data);
+CVErrorCodes VX1290A_TouchWrite_OpCode(int32_t Handle, uint32_t opaddress, uint32_t data);
+CVErrorCodes VX1290A_Write_OpCode(int32_t Handle, uint32_t opaddress);
 CVErrorCodes VX1290A_Read_Register(int32_t Handle, uint32_t address, uint32_t * data);
-//CVErrorCodes VX1290A_ReadWord(int32_t Handle, uint32_t * data);
+CVErrorCodes VX1290A_TouchRead_OpCode(int32_t Handle, uint32_t opaddress, uint32_t * data);
+CVErrorCodes VX1290A_Read_OpCode(int32_t Handle, uint32_t opaddress);
+CVErrorCodes VX1290A_Read_Word(int32_t Handle, uint32_t * data);
 
 CVErrorCodes VX1290A_Setup(int32_t Handle);
 
+CVErrorCodes VX1290A_Status(int32_t Handle, Status * status);
+CVErrorCodes VX1290A_Clear(int32_t Handle);
+CVErrorCodes VX1290A_Trigger(int32_t Handle);
+
+bool VX1290A_IsGlobalHeader(uint32_t word);
+bool VX1290A_IsGlobalTrailer(uint32_t word);
+bool VX1290A_IsTDCHeader(uint32_t word);
+bool VX1290A_IsTDCMeasurement(uint32_t word);
+bool VX1290A_IsTDCError(uint32_t word);
+bool VX1290A_IsTDCTrailer(uint32_t word);
+bool VX1290A_IsGlobalTrigTime(uint32_t word);
+
+struct VX1290A_GlobalHeader {
+  uint32_t geo;
+  uint32_t evt_cnt;
+  uint32_t id;
+  void Print() {
+    std::cout << "geo=" << std::setw(2) << geo
+	      << " evt_cnt=" << std::setw(7) << evt_cnt
+	      << " id=" << std::bitset<5>(id) << std::endl;
+  }
+};
+
+struct VX1290A_GlobalTrailer {
+  uint32_t geo;
+  uint32_t word_cnt;
+  uint32_t status_tdcerr;
+  uint32_t status_overflow;
+  uint32_t status_triglost;
+  uint32_t id;
+  void Print() {
+    std::cout << "geo=" << std::setw(2) << geo
+	      << " word_cnt=" << std::setw(5) << word_cnt
+	      << " status_tdcerr=" << std::bitset<1>(status_tdcerr)
+	      << " status_overflow=" << std::bitset<1>(status_overflow)
+	      << " status_triglost=" << std::bitset<1>(status_triglost)
+	      << " id=" << std::bitset<5>(id) << std::endl;
+  }
+};
+
+struct VX1290A_TDCHeader {
+  uint32_t bunch_id;
+  uint32_t event_id;
+  uint32_t tdc;
+  uint32_t id;
+  void Print() {
+    std::cout << "bunch_id=" << std::setw(4) << bunch_id
+	      << " event_id=" << std::setw(4) << event_id
+	      << " tdc=" << std::setw(1) << tdc
+	      << " id=" << std::bitset<5>(id) << std::endl;
+  }
+};
+
+struct VX1290A_TDCMeasurement {
+  uint32_t tdc_meas;
+  uint32_t channel;
+  uint32_t leadtrail;
+  uint32_t id;
+  void Print() {
+    std::cout << "tdc_meas=" << std::setw(7) << tdc_meas
+	      << " channel=" << std::setw(2) << channel
+	      << " leadtrail=" << std::bitset<1>(leadtrail)
+	      << " id=" << std::bitset<5>(id) << std::endl;
+  }
+};
+
+struct VX1290A_TDCError {
+  uint32_t err_flags;
+  uint32_t tdc;
+  uint32_t id;
+  void Print() {
+    std::cout << "err_flags=" << std::bitset<15>(err_flags)
+	      << " tdc=" << std::setw(2) << tdc
+	      << " id=" << std::bitset<5>(id) << std::endl;
+  }
+};
+
+struct VX1290A_TDCTrailer {
+  uint32_t word_cnt;
+  uint32_t evt_id;
+  uint32_t tdc;
+  uint32_t id;
+  void Print() {
+    std::cout << "word_cnt=" << std::setw(4) << word_cnt 
+	      << " evt_id=" << std::setw(4) << evt_id
+	      << " tdc=" << std::setw(1) << tdc
+	      << " id=" << std::bitset<5>(id) << std::endl;
+  }
+};
+
+struct VX1290A_GlobalTrigTime {
+  uint32_t trig_time;
+  uint32_t id;
+  void Print() {
+    std::cout << "trig_time=" << std::setw(9) << trig_time
+	      << " id=" << std::bitset<5>(id) << std::endl;
+  }
+};
+
+void VX1290A_ParseGlobalHeader(uint32_t word, VX1290A_GlobalHeader * head);
+void VX1290A_ParseGlobalTrailer(uint32_t word, VX1290A_GlobalTrailer * trail);
+void VX1290A_ParseTDCHeader(uint32_t word, VX1290A_TDCHeader * head);
+void VX1290A_ParseTDCMeasurement(uint32_t word, VX1290A_TDCMeasurement * meas);
+void VX1290A_ParseTDCError(uint32_t word, VX1290A_TDCError * err);
+void VX1290A_ParseTDCTrailer(uint32_t word, VX1290A_TDCTrailer * trail);
+void VX1290A_ParseGlobalTrigTime(uint32_t word, VX1290A_GlobalTrigTime * trig);
+
+CVErrorCodes VX1290A_ReadEvent(int32_t Handle, 
+			       VX1290A_GlobalHeader * gh, 
+			       VX1290A_GlobalTrailer * gt, 
+			       std::vector<VX1290A_TDCHeader> * th_v, 
+			       std::vector<VX1290A_TDCMeasurement> * tm_v, 
+			       std::vector<VX1290A_TDCError> * te_v, 
+			       std::vector<VX1290A_TDCTrailer> * tt_v, 
+			       VX1290A_GlobalTrigTime * gtt);
 
 #endif

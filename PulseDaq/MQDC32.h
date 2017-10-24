@@ -1,10 +1,6 @@
 #ifndef  MQDC32_H
 #define  MQDC32_H
 
-
-
-#define MQDC32_BASE    0x11110000
-
 #define  MQDC32_EMPTY  1
 #define  MQDC32_MAX_CHANNELS               32
 #define  MQDC32_EVENT_READOUT_BUFFER            0x0000 /* R/W D32, D64 */
@@ -113,6 +109,7 @@
 #define DONE                                0
 
 #include "Common.h"
+#include "User_Settings.h"
 
 CVErrorCodes MQDC32_Read_Register(int32_t Handle, uint32_t address, uint32_t *data);
 CVErrorCodes MQDC32_Write_Register(int32_t Handle, uint32_t address, uint32_t data);
@@ -177,6 +174,6 @@ MQDC32_EnableChannel() : ch(32,false) {}
   }
 };
 
-CVErrorCodes MQDC32_ReadEvent(int32_t handle, MQDC32_Header * head, MQDC32_Data * data, MQDC32_EoE * eoe, MQDC32_EnableChannel chans);
+CVErrorCodes MQDC32_ReadEvent(int32_t handle, MQDC32_Header * head, std::vector<MQDC32_Data> * data, MQDC32_EoE * eoe);
 
 #endif  //  MQDC32_H

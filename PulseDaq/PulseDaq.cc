@@ -2,16 +2,12 @@
 
 int main(int argc, char ** argv)
 {
-  // Struct for storing enabled MQDC32 channels
-  MQDC32_EnableChannel chans;
-
   // command line parameters
   uint32_t NumEvents;
   uint32_t Delay = 0.0;
   bool Verbose = false;
 
   // flags for required command line args
-  bool chanflag = false;
   bool numflag = false;
   bool delayflag = false;
 
@@ -44,19 +40,12 @@ int main(int argc, char ** argv)
 	{
 	  Verbose = true;
 	}
-      else 
-	{
-	  chans.ch[std::stoul(argv[i])] = true;
-	  chanflag = true;
-	}
     }
-  if (!(numflag && chanflag && delayflag))
+  if (!(numflag && delayflag))
     {
       std::cout << "I need more information!!!" << std::endl
 		<< "  Tell me how many events to record:" << std::endl
 		<< "     -n [number]" << std::endl
-		<< "  and the channels which you want me to record" << std::endl
-		<< "     chA chB chC ..." << std::endl
 		<< "  and the delay time between recorded events" << std::endl
 		<< "     -d [number of microseconds]" << std::endl;
       return 0;
@@ -70,10 +59,15 @@ int main(int argc, char ** argv)
   TString filename = TString::Format("DAQ_%04i%02i%02i_%02i%02i%02i.root",(int)(ymd.year()),(unsigned)(ymd.month()),(unsigned)(ymd.day()),time.hours().count(),time.minutes().count(),(unsigned)time.seconds().count());
 
   TFile * fileout = TFile::Open(filename,"RECREATE");
-  UInt_t adc;
-  UInt_t overflow;
-  UInt_t channel;
-  //UInt_t timestamp;
+  UInt_t qdc_adc;
+  UInt_t qdc_overflow;
+  UInt_t qdc_channel;
+  UInt_t qdc_timestamp;
+  UInt_t tdc_tdc1;
+  UInt_t tdc_tdc2;
+  UInt_t tdc_channel1;
+  UInt_t tdc_channel2;
+  UInt_t tdc_timestamp;
   Int_t year;
   Int_t month;
   Int_t day;
@@ -82,10 +76,15 @@ int main(int argc, char ** argv)
   Int_t second;
   Int_t millisecond;
   TTree * tree = new TTree("pulse","Pulse Data");
-  tree->Branch("adc",&adc,"adc/i");
-  tree->Branch("overflow",&overflow,"overflow/i");
-  tree->Branch("channel",&channel,"channel/i");
-  //tree->Branch("timestamp",&timestamp,"timestamp/i");
+  tree->Branch("qdc_adc",&qdc_adc,"qdc_adc/i");
+  tree->Branch("qdc_overflow",&qdc_overflow,"qdc_overflow/i");
+  tree->Branch("qdc_channel",&qdc_channel,"qdc_channel/i");
+  tree->Branch("qdc_timestamp",&qdc_timestamp,"qdc_timestamp/i");
+  tree->Branch("tdc_tdc1",&tdc_tdc1,"tdc_tdc1/i");
+  tree->Branch("tdc_tdc2",&tdc_tdc2,"tdc_tdc2/i");
+  tree->Branch("tdc_channel1",&tdc_channel1,"tdc_channel1/i");
+  tree->Branch("tdc_channel2",&tdc_channel2,"tdc_channel2/i");
+  tree->Branch("tdc_timestamp",&tdc_timestamp,"tdc_timestamp/i");
   tree->Branch("year",&year,"year/I");
   tree->Branch("month",&month,"month/I");
   tree->Branch("day",&day,"day/I");
@@ -104,50 +103,111 @@ int main(int argc, char ** argv)
   uint32_t n = 0;
   try
     {
+      std::cout << "Initializing V1718..." << std::endl;
       checkApiCall(CAENVME_Init(cvV1718, 0, 0, &handle),"CAENVME_Init");
+      std::cout << "             MQDC32..." << std::endl;
       checkApiCall(MQDC32_Setup(handle),"MQDC32_Setup");
+      std::cout << "             VX1290A..." << std::endl;
       checkApiCall(VX1290A_Setup(handle),"VX1290A_Setup");
+
       while (n < NumEvents)
 	{
-	  if (n % (NumEvents/100) == 0) std::cout << "Reading event " << n << std::endl;
+	  if (NumEvents < 100 || n%(NumEvents/100)==0)
+	    std::cout << "Reading event " << n << std::endl;
+	  
+	  // The MQDC32 emits an IRQ1 when data is ready, so check for it
 	  unsigned char mask = 0;
 	  while (!(mask & (1<<(cvIRQ1-1))))
 	    {
 	      checkApiCall(CAENVME_IRQCheck(handle, &mask),"CAENVME_IRQCheck");
 	    }
+	  
+	  // When the MQDC32 IRQ1 is found, acknowledge it and continue reading data
 	  uint32_t vector;
 	  checkApiCall(CAENVME_IACKCycle(handle,cvIRQ1,&vector,cvD16),"CAENVME_IACKCycle");
 
+	  // Read MQDC32 output buffer and store in structs
 	  MQDC32_Header head;
-	  MQDC32_Data data;
+	  std::vector<MQDC32_Data> data;
 	  MQDC32_EoE eoe;
-	  checkApiCall(MQDC32_ReadEvent(handle,&head,&data,&eoe,chans),"MQDC32_ReadEvent");
+	  checkApiCall(MQDC32_ReadEvent(handle,&head,&data,&eoe),"MQDC32_ReadEvent");
+
+	  // Read VX1290A (which was triggered by the output of MQDC32)
+	  VX1290A_GlobalHeader gh;
+	  VX1290A_GlobalTrailer gt;
+	  std::vector<VX1290A_TDCHeader> th;
+	  std::vector<VX1290A_TDCMeasurement> tm;
+	  std::vector<VX1290A_TDCError> te;
+	  std::vector<VX1290A_TDCTrailer> tt;
+	  VX1290A_GlobalTrigTime gtt;
+	  checkApiCall(VX1290A_ReadEvent(handle,&gh,&gt,&th,&tm,&te,&tt,&gtt),"VX1290A_ReadEvent");
+
+	  // Print parsed words if desired
 	  if (Verbose)
 	    {
 	      head.Print();
-	      data.Print();
+	      for (auto i : data) i.Print();
 	      eoe.Print();
+	      gh.Print();
+	      gtt.Print();
+	      for (auto i : th) i.Print();
+	      for (auto i : tm) i.Print();
+	      for (auto i : te) i.Print();
+	      for (auto i : tt) i.Print();
+	      gt.Print();
 	    }
 	  
-	  adc = data.adc;
-	  overflow = data.overflow;
-	  channel = data.channel;
-	  
-	  now = std::chrono::system_clock::now();
-	  dp = floor<days>(now);
-	  ymd = year_month_day{dp};
-	  time = make_time(std::chrono::duration_cast<std::chrono::milliseconds>(now-dp));
-	  year = (int)(ymd.year());
-	  month = (unsigned)(ymd.month());
-	  day = (unsigned)(ymd.day());
-	  hour = time.hours().count();
-	  minute = time.minutes().count();
-	  second = time.seconds().count();
-	  millisecond = time.subseconds().count();
-	  
-	  tree->Fill();
-	  
+	  /////////////////////////////////////////////
+	  // Acquire data here and fill output TTree //
+	  /////////////////////////////////////////////
+	  if (data.size() == 1 && data[0].channel == MQDC32_CHANNEL_CHARGE &&
+	      tm.size() == 2 && ((tm[0].channel == VX1290A_CHANNEL_LE && tm[1].channel == VX1290A_CHANNEL_MAX) || (tm[0].channel == VX1290A_CHANNEL_MAX && tm[1].channel == VX1290A_CHANNEL_LE)))
+	    {
+	      qdc_adc = data[0].adc;
+	      qdc_overflow = data[0].overflow;
+	      qdc_channel = data[0].channel;
+	      qdc_timestamp = eoe.timestamp;
+	      
+	      if (tm[0].channel == VX1290A_CHANNEL_LE)
+		{
+		  tdc_tdc1 = tm[0].tdc_meas;
+		  tdc_tdc2 = tm[1].tdc_meas;
+		  tdc_channel1 = tm[0].channel;
+		  tdc_channel2 = tm[1].channel;
+		}
+	      else if (tm[1].channel == VX1290A_CHANNEL_LE)
+		{
+		  tdc_tdc1 = tm[1].tdc_meas;
+		  tdc_tdc2 = tm[0].tdc_meas;
+		  tdc_channel1 = tm[1].channel;
+		  tdc_channel2 = tm[0].channel;
+		}
+	      tdc_timestamp = gtt.trig_time;
+	      
+	      now = std::chrono::system_clock::now();
+	      dp = floor<days>(now);
+	      ymd = year_month_day{dp};
+	      time = make_time(std::chrono::duration_cast<std::chrono::milliseconds>(now-dp));
+	      year = (int)(ymd.year());
+	      month = (unsigned)(ymd.month());
+	      day = (unsigned)(ymd.day());
+	      hour = time.hours().count();
+	      minute = time.minutes().count();
+	      second = time.seconds().count();
+	      millisecond = time.subseconds().count();
+	      
+	      tree->Fill();
+	    }
+	  ///////////////////////////////////////////
+	  // Finished writing data to output TTree //
+	  ///////////////////////////////////////////
+
+
+	  // Reset data buffer of MQDC32
 	  checkApiCall(MQDC32_Reset_Data_Buffer(handle),"MQDC32_Reset_Data_Buffer");
+	  // Do not reset VX1290A here. No point...
+
+	  // Increment and delay
 	  ++n;
 	  usleep(Delay);
 	}

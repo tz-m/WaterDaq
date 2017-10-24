@@ -5,6 +5,7 @@
 #include "VX1290A.h"
 
 #include "Common.h"
+#include "User_Settings.h"
 
 #include "TTree.h"
 #include "TFile.h"

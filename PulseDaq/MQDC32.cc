@@ -29,6 +29,7 @@ CVErrorCodes MQDC32_Setup(int32_t Handle)
   checkApiCall(MQDC32_Write_Register(Handle, MQDC32_BASE + MQDC32_IRQ_LEVEL, cvIRQ1),"MQDC32_Setup: Write IRQ Level");
   checkApiCall(MQDC32_Write_Register(Handle, MQDC32_BASE + MQDC32_READOUT_RESET, 0x0),"MQDC32_Setup: Write Readout Reset");
   checkApiCall(MQDC32_Write_Register(Handle, MQDC32_BASE + MQDC32_START_ACQ, 0x1),"MQDC32_Setup: Start Acquisition");
+  //usleep(1000000);
   return cvSuccess;
 }
 
@@ -44,20 +45,17 @@ CVErrorCodes MQDC32_Read_Word(int32_t Handle, uint32_t * data)
 
 bool MQDC32_IsHeader(uint32_t word)
 {
-  if (BitMask(word, 30, 2) == 1) return true;
-  return false;
+  return (BitMask(word, 30, 2) == 1);
 }
 
 bool MQDC32_IsData(uint32_t word)
 {
-  if ((BitMask(word, 30, 2) == 0) && (BitMask(word, 21, 9) == 32)) return true;
-  return false;
+  return ((BitMask(word, 30, 2) == 0) && (BitMask(word, 21, 9) == 32) );
 }
 
 bool MQDC32_IsEoE(uint32_t word)
 {
-  if (BitMask(word, 30, 2) == 3) return true;
-  return false;
+  return (BitMask(word, 30, 2) == 3);
 }
 
 void MQDC32_ParseHeaderWord(uint32_t word, MQDC32_Header * head)
@@ -84,7 +82,7 @@ void MQDC32_ParseEoEWord(uint32_t word, MQDC32_EoE * eoe)
   eoe->esig = BitMask(word,30,2);
 }
 
-CVErrorCodes MQDC32_ReadEvent(int32_t handle, MQDC32_Header * head, MQDC32_Data * data, MQDC32_EoE * eoe, MQDC32_EnableChannel chans)
+CVErrorCodes MQDC32_ReadEvent(int32_t handle, MQDC32_Header * head, std::vector<MQDC32_Data> * data, MQDC32_EoE * eoe)
 {
   CVErrorCodes ret;
   uint32_t word;
@@ -99,8 +97,10 @@ CVErrorCodes MQDC32_ReadEvent(int32_t handle, MQDC32_Header * head, MQDC32_Data 
 	    }
 	  else if (MQDC32_IsData(word))
 	    {
-	      MQDC32_ParseDataWord(word,data);
-	      if (!chans.q(data->channel)) continue;
+	      MQDC32_Data d;
+	      MQDC32_ParseDataWord(word,&d);
+	      if (d.channel != MQDC32_CHANNEL_CHARGE) continue;
+	      data->push_back(d);
 	    }
 	  else if (MQDC32_IsEoE(word))
 	    {

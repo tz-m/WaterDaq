@@ -13,6 +13,7 @@
 #include <vector>
 #include <iomanip>
 #include <signal.h>
+#include <bitset>
 
 #include "../date/include/date/date.h"
 
