@@ -95,8 +95,8 @@ CVErrorCodes VX1290A_Setup(int32_t Handle)
   //Disable all channels
   checkApiCall(VX1290A_Write_OpCode(Handle, VX1290A_DIS_ALL_CH_OPCODE),"VX1290A_Write_OpCode: Disable all channels");
   // Enable two channels
-  checkApiCall(VX1290A_Write_OpCode(Handle, VX1290A_EN_CHANNEL_OPCODE + VX1290A_CHANNEL_LE),"VX1290A_Write_OpCode: Enable channel 0");
-  checkApiCall(VX1290A_Write_OpCode(Handle, VX1290A_EN_CHANNEL_OPCODE + VX1290A_CHANNEL_MAX),"VX1290A_Write_OpCode: Enable channel 1");
+  checkApiCall(VX1290A_Write_OpCode(Handle, VX1290A_EN_CHANNEL_OPCODE + VX1290A_CHANNEL_LE),"VX1290A_Write_OpCode: Enable channel LE");
+  checkApiCall(VX1290A_Write_OpCode(Handle, VX1290A_EN_CHANNEL_OPCODE + VX1290A_CHANNEL_MAX),"VX1290A_Write_OpCode: Enable channel MAX");
 
   Status stat;
   checkApiCall(VX1290A_Status(Handle, &stat),"VX1290A_Status");
@@ -156,14 +156,14 @@ CVErrorCodes VX1290A_ReadEvent(int32_t Handle,
 	    {
 	      VX1290A_TDCHeader h;
 	      VX1290A_ParseTDCHeader(word,&h);
-	      if (h.tdc == 0) th->push_back(h);
+	      th->push_back(h);
 	    }
 	  else if (VX1290A_IsTDCMeasurement(word))
 	    {
 	      VX1290A_TDCMeasurement m;
 	      VX1290A_ParseTDCMeasurement(word,&m);
 	      if (m.channel == VX1290A_CHANNEL_LE || 
-		  m.channel == VX1290A_CHANNEL_MAX) 
+	      m.channel == VX1290A_CHANNEL_MAX) 
 		{
 		  tm->push_back(m);
 		}
@@ -172,13 +172,13 @@ CVErrorCodes VX1290A_ReadEvent(int32_t Handle,
 	    {
 	      VX1290A_TDCTrailer t;
 	      VX1290A_ParseTDCTrailer(word,&t);
-	      if (t.tdc == 0) tt->push_back(t);
+	      tt->push_back(t);
 	    }
 	  else if (VX1290A_IsTDCError(word))
 	    {
 	      VX1290A_TDCError e;
 	      VX1290A_ParseTDCError(word,&e);
-	      if (e.tdc == 0) te->push_back(e);
+	      te->push_back(e);
 	    }
 	  else if (VX1290A_IsGlobalTrigTime(word))
 	    {

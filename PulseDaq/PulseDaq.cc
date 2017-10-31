@@ -101,6 +101,7 @@ int main(int argc, char ** argv)
 
   int32_t handle;
   uint32_t n = 0;
+  uint32_t nT = 0;
   try
     {
       std::cout << "Initializing V1718..." << std::endl;
@@ -133,7 +134,7 @@ int main(int argc, char ** argv)
 	  std::vector<MQDC32_Data> data;
 	  MQDC32_EoE eoe;
 	  checkApiCall(MQDC32_ReadEvent(handle,&head,&data,&eoe),"MQDC32_ReadEvent");
-
+	 
 	  // Read VX1290A (which was triggered by the output of MQDC32)
 	  VX1290A_GlobalHeader gh;
 	  VX1290A_GlobalTrailer gt;
@@ -199,6 +200,9 @@ int main(int argc, char ** argv)
 	      millisecond = time.subseconds().count();
 	      
 	      tree->Fill();
+
+	      ++n;
+	      usleep(Delay);
 	    }
 	  ///////////////////////////////////////////
 	  // Finished writing data to output TTree //
@@ -209,9 +213,8 @@ int main(int argc, char ** argv)
 	  checkApiCall(MQDC32_Reset_Data_Buffer(handle),"MQDC32_Reset_Data_Buffer");
 	  // Do not reset VX1290A here. No point...
 
-	  // Increment and delay
-	  ++n;
-	  usleep(Delay);
+	  // Increment
+	  ++nT;
 	}
       checkApiCall(CAENVME_End(handle),"CAENVME_End");
     }
@@ -245,6 +248,7 @@ int main(int argc, char ** argv)
     }
   
   std::cout << "Read " << n << " events" << std::endl;
+  std::cout << "Error in " << nT-n << " events" << std::endl;
   tree->Write();
   fileout->Close();
   
