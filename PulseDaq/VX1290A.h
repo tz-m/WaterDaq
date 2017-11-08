@@ -151,6 +151,8 @@ typedef struct {
   uint32_t TRIGGER_LOST : 1;
 } Status;
 
+void PrintStatus(Status stat);
+
 CVErrorCodes VX1290A_Write_Register(int32_t Handle, uint32_t address, uint32_t data);
 CVErrorCodes VX1290A_TouchWrite_OpCode(int32_t Handle, uint32_t opaddress, uint32_t data);
 CVErrorCodes VX1290A_Write_OpCode(int32_t Handle, uint32_t opaddress);
@@ -275,6 +277,7 @@ CVErrorCodes VX1290A_ReadEvent(int32_t Handle,
 			       std::vector<VX1290A_TDCMeasurement> * tm_v, 
 			       std::vector<VX1290A_TDCError> * te_v, 
 			       std::vector<VX1290A_TDCTrailer> * tt_v, 
-			       VX1290A_GlobalTrigTime * gtt);
+			       VX1290A_GlobalTrigTime * gtt,
+			       Settings set);
 
 #endif

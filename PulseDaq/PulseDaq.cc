@@ -3,13 +3,7 @@
 int main(int argc, char ** argv)
 {
   // command line parameters
-  uint32_t NumEvents;
-  uint32_t Delay = 0.0;
-  bool Verbose = false;
-
-  // flags for required command line args
-  bool numflag = false;
-  bool delayflag = false;
+  Settings set;
 
   // Parse command line args
   for (int i = 1; i < argc; ++i)
@@ -21,8 +15,7 @@ int main(int argc, char ** argv)
 	      std::cout << "need to specify a number!" << std::endl;
 	      return 0;
 	    }
-	  NumEvents = std::stod(argv[i+1]);
-	  numflag = true;
+	  set.SetNumEvents(std::stod(argv[i+1]));
 	  ++i;
 	}
       else if (!strcmp(argv[i],"-d"))
@@ -32,16 +25,15 @@ int main(int argc, char ** argv)
 	      std::cout << "need to specify a delay (in microseconds)!" << std::endl;
 	      return 0;
 	    }
-	  Delay = std::stod(argv[i+1]);
-	  delayflag = true;
+	  set.SetDelay(std::stod(argv[i+1]));
 	  ++i;
 	}
       else if (!strcmp(argv[i],"-v"))
 	{
-	  Verbose = true;
+	  set.SetVerbose(true);
 	}
     }
-  if (!(numflag && delayflag))
+  if (!(set.IsValid()))
     {
       std::cout << "I need more information!!!" << std::endl
 		<< "  Tell me how many events to record:" << std::endl
@@ -113,9 +105,9 @@ int main(int argc, char ** argv)
       std::cout << "             VX1290A..." << std::endl;
       checkApiCall(VX1290A_Setup(handle),"VX1290A_Setup");
 
-      while (n < NumEvents)
+      while (n < set.NumEvents())
 	{
-	  if (NumEvents<100 || Delay>100000 || n%(NumEvents/100)==0)
+	  if (set.NumEvents()<100 || set.Delay() > 100000 || n%(set.NumEvents()/100)==0)
 	    std::cout << "Reading event " << n << std::endl;
 	  
 	  // The MQDC32 emits an IRQ1 when data is ready, so check for it
@@ -133,7 +125,7 @@ int main(int argc, char ** argv)
 	  MQDC32_Header head;
 	  std::vector<MQDC32_Data> data;
 	  MQDC32_EoE eoe;
-	  checkApiCall(MQDC32_ReadEvent(handle,&head,&data,&eoe),"MQDC32_ReadEvent");
+	  checkApiCall(MQDC32_ReadEvent(handle,&head,&data,&eoe,set),"MQDC32_ReadEvent");
 	 
 	  // Read VX1290A (which was triggered by the output of MQDC32)
 	  VX1290A_GlobalHeader gh;
@@ -143,10 +135,11 @@ int main(int argc, char ** argv)
 	  std::vector<VX1290A_TDCError> te;
 	  std::vector<VX1290A_TDCTrailer> tt;
 	  VX1290A_GlobalTrigTime gtt;
-	  checkApiCall(VX1290A_ReadEvent(handle,&gh,&gt,&th,&tm,&te,&tt,&gtt),"VX1290A_ReadEvent");
+	  checkApiCall(VX1290A_ReadEvent(handle,&gh,&gt,&th,&tm,&te,&tt,&gtt,set),"VX1290A_ReadEvent");
 
+	  /*
 	  // Print parsed words if desired
-	  if (Verbose)
+	  if (set.Verbose())
 	    {
 	      head.Print();
 	      for (auto i : data) i.Print();
@@ -159,6 +152,7 @@ int main(int argc, char ** argv)
 	      for (auto i : tt) i.Print();
 	      gt.Print();
 	    }
+	  */
 	  
 	  /////////////////////////////////////////////
 	  // Acquire data here and fill output TTree //
@@ -202,7 +196,7 @@ int main(int argc, char ** argv)
 	      tree->Fill();
 
 	      ++n;
-	      usleep(Delay);
+	      usleep(set.Delay());
 	    }
 	  ///////////////////////////////////////////
 	  // Finished writing data to output TTree //

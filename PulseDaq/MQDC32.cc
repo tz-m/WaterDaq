@@ -82,7 +82,7 @@ void MQDC32_ParseEoEWord(uint32_t word, MQDC32_EoE * eoe)
   eoe->esig = BitMask(word,30,2);
 }
 
-CVErrorCodes MQDC32_ReadEvent(int32_t handle, MQDC32_Header * head, std::vector<MQDC32_Data> * data, MQDC32_EoE * eoe)
+CVErrorCodes MQDC32_ReadEvent(int32_t handle, MQDC32_Header * head, std::vector<MQDC32_Data> * data, MQDC32_EoE * eoe, Settings set)
 {
   CVErrorCodes ret;
   uint32_t word;
@@ -94,17 +94,31 @@ CVErrorCodes MQDC32_ReadEvent(int32_t handle, MQDC32_Header * head, std::vector<
 	  if (MQDC32_IsHeader(word))
 	    {
 	      MQDC32_ParseHeaderWord(word,head);
+	      if (set.Verbose()) head->Print();
 	    }
 	  else if (MQDC32_IsData(word))
 	    {
 	      MQDC32_Data d;
 	      MQDC32_ParseDataWord(word,&d);
-	      if (d.channel != MQDC32_CHANNEL_CHARGE) continue;
+	      if (d.channel != MQDC32_CHANNEL_CHARGE) 
+		{
+		  if (set.Verbose()) d.Print();
+		  continue;
+		}
+	      else
+		{
+		  if (set.Verbose())
+		    {
+		      std::cout << "---> ";
+		      d.Print();
+		    }
+		}
 	      data->push_back(d);
 	    }
 	  else if (MQDC32_IsEoE(word))
 	    {
 	      MQDC32_ParseEoEWord(word,eoe);
+	      if (set.Verbose()) eoe->Print();
 	    }
 	}
       else if (ret == cvBusError) break;

@@ -174,6 +174,6 @@ MQDC32_EnableChannel() : ch(32,false) {}
   }
 };
 
-CVErrorCodes MQDC32_ReadEvent(int32_t handle, MQDC32_Header * head, std::vector<MQDC32_Data> * data, MQDC32_EoE * eoe);
+CVErrorCodes MQDC32_ReadEvent(int32_t handle, MQDC32_Header * head, std::vector<MQDC32_Data> * data, MQDC32_EoE * eoe, Settings set);
 
 #endif  //  MQDC32_H

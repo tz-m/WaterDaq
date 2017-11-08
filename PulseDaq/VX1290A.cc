@@ -110,6 +110,26 @@ CVErrorCodes VX1290A_Status(int32_t Handle, Status * status)
 {
   return VX1290A_Read_Register(Handle, VX1290A_STATUS_ADD, (uint32_t*)status);
 }
+
+void PrintStatus(Status stat)
+{
+  std::cout << "Status: DATA_READY   " << stat.DATA_READY
+	    << "\n        ALM_FULL     " << stat.ALM_FULL
+	    << "\n        FULL         " << stat.FULL 
+	    << "\n        TRG_MATCH    " << stat.TRG_MATCH 
+	    << "\n        HEADER_EN    " << stat.HEADER_EN 
+	    << "\n        TERM_ON      " << stat.TERM_ON 
+	    << "\n        ERROR0       " << stat.ERROR0
+	    << "\n        ERROR1       " << stat.ERROR1 
+	    << "\n        ERROR2       " << stat.ERROR2
+	    << "\n        ERROR3       " << stat.ERROR3
+	    << "\n        BERR         " << stat.BERR
+	    << "\n        PURG         " << stat.PURG
+	    << "\n        RES_0        " << stat.RES_0
+	    << "\n        RES_1        " << stat.RES_1
+	    << "\n        PAIR         " << stat.PAIR
+	    << "\n        TRIGGER_LOST " << stat.TRIGGER_LOST << std::endl;
+}
   
 CVErrorCodes VX1290A_Clear(int32_t Handle)
 {
@@ -128,7 +148,8 @@ CVErrorCodes VX1290A_ReadEvent(int32_t Handle,
 			       std::vector<VX1290A_TDCMeasurement> * tm, 
 			       std::vector<VX1290A_TDCError> * te, 
 			       std::vector<VX1290A_TDCTrailer> * tt, 
-			       VX1290A_GlobalTrigTime * gtt)
+			       VX1290A_GlobalTrigTime * gtt,
+			       Settings set)
 {
   int time = 0;
   CVErrorCodes ret;
@@ -136,10 +157,14 @@ CVErrorCodes VX1290A_ReadEvent(int32_t Handle,
   do {
     ret = VX1290A_Status(Handle, &stat);
     if (ret != cvSuccess) return ret;
-    usleep(1000);
+    if (stat.DATA_READY != 1) 
+      {
+	PrintStatus(stat);
+	usleep(1000000);
+      }
     ++time;
-  } while (stat.DATA_READY != 1 && time < 10000);
-  if (time >= 10000)
+  } while (stat.DATA_READY != 1 && time < 10);
+  if (time >= 10)
     {
       throw std::runtime_error("Data not ready to be read, TIMEOUT");
     }
@@ -152,11 +177,13 @@ CVErrorCodes VX1290A_ReadEvent(int32_t Handle,
 	  if (VX1290A_IsGlobalHeader(word))
 	    {
 	      VX1290A_ParseGlobalHeader(word,gh);
+	      if (set.Verbose()) gh->Print();
 	    }
 	  else if (VX1290A_IsTDCHeader(word))
 	    {
 	      VX1290A_TDCHeader h;
 	      VX1290A_ParseTDCHeader(word,&h);
+	      if (set.Verbose()) h.Print();
 	      th->push_back(h);
 	    }
 	  else if (VX1290A_IsTDCMeasurement(word))
@@ -166,28 +193,41 @@ CVErrorCodes VX1290A_ReadEvent(int32_t Handle,
 	      if (m.channel == VX1290A_CHANNEL_LE || 
 	      m.channel == VX1290A_CHANNEL_MAX) 
 		{
+		  if (set.Verbose()) 
+		    {
+		      std::cout << "---> ";
+		      m.Print();
+		    }
 		  tm->push_back(m);
+		}
+	      else
+		{
+		  if (set.Verbose()) m.Print();
 		}
 	    }
 	  else if (VX1290A_IsTDCTrailer(word))
 	    {
 	      VX1290A_TDCTrailer t;
 	      VX1290A_ParseTDCTrailer(word,&t);
+	      if (set.Verbose()) t.Print();
 	      tt->push_back(t);
 	    }
 	  else if (VX1290A_IsTDCError(word))
 	    {
 	      VX1290A_TDCError e;
 	      VX1290A_ParseTDCError(word,&e);
+	      if (set.Verbose()) e.Print();
 	      te->push_back(e);
 	    }
 	  else if (VX1290A_IsGlobalTrigTime(word))
 	    {
 	      VX1290A_ParseGlobalTrigTime(word,gtt);
+	      if (set.Verbose()) gtt->Print();
 	    }
 	  else if (VX1290A_IsGlobalTrailer(word))
 	    {
 	      VX1290A_ParseGlobalTrailer(word,gt);
+	      if (set.Verbose()) gt->Print();
 	      return cvSuccess;
 	    }
 	}
