@@ -136,6 +136,7 @@ CVErrorCodes VX1290A_ReadEvent(int32_t Handle,
   do {
     ret = VX1290A_Status(Handle, &stat);
     if (ret != cvSuccess) return ret;
+    usleep(1000);
     ++time;
   } while (stat.DATA_READY != 1 && time < 10000);
   if (time >= 10000)

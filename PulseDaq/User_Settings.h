@@ -5,8 +5,8 @@
 #define MQDC32_CHANNEL_CHARGE 0x1 
 
 #define VX1290A_BASE 0xEEEE0000
-#define VX1290A_CHANNEL_LE 0x1
-#define VX1290A_CHANNEL_MAX 0x19
+#define VX1290A_CHANNEL_LE 0x1 // channel 1
+#define VX1290A_CHANNEL_MAX 0x19 // channel 25 = 16+9
 #define VX1290A_WINDOW_WIDTH 0x07d0  // 0x07d0 * 25ns = 50us
 #define VX1290A_WINDOW_OFFSET 0xFC18 // 0xfc18 * 25ns = -25us
 
