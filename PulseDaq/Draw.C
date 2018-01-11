@@ -35,6 +35,8 @@ void Draw(std::string filename)
   TGraph * gr_riset = new TGraph();
   int n = 0;
 
+  std::vector<Double_t> qdcvec;
+
   while (reader.Next())
     {
       if (start)
@@ -64,7 +66,10 @@ void Draw(std::string filename)
       gr_charge->SetPoint(n,datime.Convert(),*b_qdc_adc);
       gr_riset->SetPoint(n,datime.Convert(),0.025*(risetime));
       ++n;
+      qdcvec.push_back((Double_t)(*b_qdc_adc));     
     }
+
+  std::cout << "Mean QDC = " << TMath::Mean(qdcvec.begin(),qdcvec.end()) << "  StdDev QDC = " << TMath::StdDev(qdcvec.begin(),qdcvec.end()) << "  Num Vals = " << qdcvec.size() << std::endl;
 
   TCanvas * canv = new TCanvas("c","c",1200,900);
   canv->Divide(1,2);

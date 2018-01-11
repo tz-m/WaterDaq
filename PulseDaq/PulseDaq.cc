@@ -32,6 +32,20 @@ int main(int argc, char ** argv)
 	{
 	  set.SetVerbose(true);
 	}
+      else if (!strcmp(argv[i],"-i"))
+	{
+	  if (i+2 > argc)
+	    {
+	      std::cout << "need to specify an averaging window width!" << std::endl;
+	      return 0;
+	    }
+	  set.SetInteractive(std::stod(argv[i+1]));
+	  ++i;
+	}
+      else if (!strcmp(argv[i],"-tdc"))
+	{
+	  set.SetUseTDC(true);
+	}
     }
   if (!(set.IsValid()))
     {
@@ -52,6 +66,7 @@ int main(int argc, char ** argv)
 
   TFile * fileout = TFile::Open(filename,"RECREATE");
   UInt_t qdc_adc;
+  Double_t qdc_pC;
   UInt_t qdc_overflow;
   UInt_t qdc_channel;
   UInt_t qdc_timestamp;
@@ -60,6 +75,8 @@ int main(int argc, char ** argv)
   UInt_t tdc_channel1;
   UInt_t tdc_channel2;
   UInt_t tdc_timestamp;
+  Double_t qdc_charge;
+  Double_t risetime;
   Int_t year;
   Int_t month;
   Int_t day;
@@ -69,6 +86,7 @@ int main(int argc, char ** argv)
   Int_t millisecond;
   TTree * tree = new TTree("pulse","Pulse Data");
   tree->Branch("qdc_adc",&qdc_adc,"qdc_adc/i");
+  tree->Branch("qdc_pC",&qdc_pC,"qdc_pC/D");
   tree->Branch("qdc_overflow",&qdc_overflow,"qdc_overflow/i");
   tree->Branch("qdc_channel",&qdc_channel,"qdc_channel/i");
   tree->Branch("qdc_timestamp",&qdc_timestamp,"qdc_timestamp/i");
@@ -77,6 +95,8 @@ int main(int argc, char ** argv)
   tree->Branch("tdc_channel1",&tdc_channel1,"tdc_channel1/i");
   tree->Branch("tdc_channel2",&tdc_channel2,"tdc_channel2/i");
   tree->Branch("tdc_timestamp",&tdc_timestamp,"tdc_timestamp/i");
+  tree->Branch("qdc_charge",&qdc_charge,"qdc_charge/D");
+  tree->Branch("risetime",&risetime,"risetime/D");
   tree->Branch("year",&year,"year/I");
   tree->Branch("month",&month,"month/I");
   tree->Branch("day",&day,"day/I");
@@ -94,6 +114,16 @@ int main(int argc, char ** argv)
   int32_t handle;
   uint32_t n = 0;
   uint32_t nT = 0;
+
+  if (set.UseInteractive()) std::cout << "Displaying average of " << set.Interactive() << " pulses." << std::endl;
+  std::deque<Double_t> windowQDC;
+  std::deque<Double_t> windowTDC;
+
+  Double_t mqdc, sqdc, mqdc_last, sqdc_last;
+  Double_t mtdc, stdc, mtdc_last, stdc_last;
+
+  Double_t ADCtopC = 500.0/3840.0;
+
   try
     {
       std::cout << "Initializing V1718..." << std::endl;
@@ -102,13 +132,16 @@ int main(int argc, char ** argv)
       usleep(1000000);
       std::cout << "             MQDC32..." << std::endl;
       checkApiCall(MQDC32_Setup(handle),"MQDC32_Setup");
-      std::cout << "             VX1290A..." << std::endl;
-      checkApiCall(VX1290A_Setup(handle),"VX1290A_Setup");
-
+      if (set.UseTDC())
+	{
+	  std::cout << "             VX1290A..." << std::endl;
+	  checkApiCall(VX1290A_Setup(handle),"VX1290A_Setup");
+	}
+      
       while (n < set.NumEvents())
 	{
-	  if (set.NumEvents()<100 || set.Delay() > 100000 || n%(set.NumEvents()/100)==0)
-	    std::cout << "Reading event " << n << std::endl;
+	  if ((set.NumEvents()<100 || set.Delay() > 100000 || n%(set.NumEvents()/100)==0) && !(set.UseInteractive()))
+	    std::cout << "\rReading event " << n << std::flush;
 	  
 	  // The MQDC32 emits an IRQ1 when data is ready, so check for it
 	  unsigned char mask = 0;
@@ -126,7 +159,7 @@ int main(int argc, char ** argv)
 	  std::vector<MQDC32_Data> data;
 	  MQDC32_EoE eoe;
 	  checkApiCall(MQDC32_ReadEvent(handle,&head,&data,&eoe,set),"MQDC32_ReadEvent");
-	 
+
 	  // Read VX1290A (which was triggered by the output of MQDC32)
 	  VX1290A_GlobalHeader gh;
 	  VX1290A_GlobalTrailer gt;
@@ -135,7 +168,10 @@ int main(int argc, char ** argv)
 	  std::vector<VX1290A_TDCError> te;
 	  std::vector<VX1290A_TDCTrailer> tt;
 	  VX1290A_GlobalTrigTime gtt;
-	  checkApiCall(VX1290A_ReadEvent(handle,&gh,&gt,&th,&tm,&te,&tt,&gtt,set),"VX1290A_ReadEvent");
+	  if (set.UseTDC())
+	    {
+	      checkApiCall(VX1290A_ReadEvent(handle,&gh,&gt,&th,&tm,&te,&tt,&gtt,set),"VX1290A_ReadEvent");
+	    }
 
 	  /*
 	  // Print parsed words if desired
@@ -157,29 +193,42 @@ int main(int argc, char ** argv)
 	  /////////////////////////////////////////////
 	  // Acquire data here and fill output TTree //
 	  /////////////////////////////////////////////
-	  if (data.size() == 1 && data[0].channel == MQDC32_CHANNEL_CHARGE &&
-	      tm.size() == 2 && ((tm[0].channel == VX1290A_CHANNEL_LE && tm[1].channel == VX1290A_CHANNEL_MAX) || (tm[0].channel == VX1290A_CHANNEL_MAX && tm[1].channel == VX1290A_CHANNEL_LE)))
+	  if (data.size() == 1 && data[0].channel == MQDC32_CHANNEL_CHARGE)
 	    {
 	      qdc_adc = data[0].adc;
+	      qdc_pC = qdc_adc*ADCtopC;
 	      qdc_overflow = data[0].overflow;
 	      qdc_channel = data[0].channel;
 	      qdc_timestamp = eoe.timestamp;
+	      qdc_charge = qdc_adc*ADCtopC;
 	      
-	      if (tm[0].channel == VX1290A_CHANNEL_LE)
-		{
-		  tdc_tdc1 = tm[0].tdc_meas;
-		  tdc_tdc2 = tm[1].tdc_meas;
-		  tdc_channel1 = tm[0].channel;
-		  tdc_channel2 = tm[1].channel;
+	      if (set.UseTDC() && tm.size() == 2 && ((tm[0].channel == VX1290A_CHANNEL_LE && tm[1].channel == VX1290A_CHANNEL_MAX) || (tm[0].channel == VX1290A_CHANNEL_MAX && tm[1].channel == VX1290A_CHANNEL_LE)))
+		{  
+		  if (tm[0].channel == VX1290A_CHANNEL_LE)
+		    {
+		      tdc_tdc1 = tm[0].tdc_meas;
+		      tdc_tdc2 = tm[1].tdc_meas;
+		      tdc_channel1 = tm[0].channel;
+		      tdc_channel2 = tm[1].channel;
+		    }
+		  else if (tm[1].channel == VX1290A_CHANNEL_LE)
+		    {
+		      tdc_tdc1 = tm[1].tdc_meas;
+		      tdc_tdc2 = tm[0].tdc_meas;
+		      tdc_channel1 = tm[1].channel;
+		      tdc_channel2 = tm[0].channel;
+		    }
+		  tdc_timestamp = gtt.trig_time;
 		}
-	      else if (tm[1].channel == VX1290A_CHANNEL_LE)
+	      else
 		{
-		  tdc_tdc1 = tm[1].tdc_meas;
-		  tdc_tdc2 = tm[0].tdc_meas;
-		  tdc_channel1 = tm[1].channel;
-		  tdc_channel2 = tm[0].channel;
+		  tdc_tdc1 = 0;
+		  tdc_tdc2 = 0;
+		  tdc_channel1 = 0;
+		  tdc_channel2 = 0;
+		  tdc_timestamp = 0;
 		}
-	      tdc_timestamp = gtt.trig_time;
+	      risetime = (std::max(tdc_tdc1,tdc_tdc2)-std::min(tdc_tdc1,tdc_tdc2))*0.025;
 	      
 	      now = std::chrono::system_clock::now();
 	      dp = floor<days>(now);
@@ -194,6 +243,37 @@ int main(int argc, char ** argv)
 	      millisecond = time.subseconds().count();
 	      
 	      tree->Fill();
+
+	      if (n == 0) 
+		{
+		  mqdc = qdc_charge;
+		  sqdc = 0;
+		  mtdc = risetime;
+		  stdc = 0;
+		}
+	      else
+		{
+		  mqdc_last = mqdc;
+		  mqdc = mqdc_last + (qdc_charge - mqdc_last)/n;
+		  sqdc_last = sqdc;
+		  sqdc = sqdc_last + (qdc_charge - mqdc_last)*(qdc_charge - mqdc);
+		  mtdc_last = mtdc;
+		  mtdc = mtdc_last + (risetime - mtdc_last)/n;
+		  stdc_last = stdc;
+		  stdc = stdc_last + (risetime - mtdc_last)*(risetime - mtdc);
+		}
+
+	      if (set.UseInteractive())
+		{
+		  windowQDC.push_back(qdc_charge);
+		  windowTDC.push_back(risetime);
+		  if (windowQDC.size() > set.Interactive())
+		    {
+		      windowQDC.pop_front();
+		      windowTDC.pop_front();
+		      if (n % set.Interactive() == 0) std::cout << "\rPulse " << n << ": Charge (pC) = " << std::setw(7) << std::setprecision(2) << std::fixed << TMath::Mean(windowQDC.begin(),windowQDC.end()) << " +/- " << std::setw(7) << std::setprecision(2) << std::fixed << TMath::StdDev(windowQDC.begin(),windowQDC.end()) << ",  Rise Time (ns) = " << std::setw(6) << std::setprecision(2) << std::fixed << TMath::Mean(windowTDC.begin(),windowTDC.end()) << " +/- " << std::setw(6) << std::setprecision(2) << std::fixed << TMath::StdDev(windowTDC.begin(),windowTDC.end()) << std::flush;
+		    }
+		}
 
 	      ++n;
 	      usleep(set.Delay());
@@ -241,8 +321,11 @@ int main(int argc, char ** argv)
       checkApiCall(CAENVME_End(handle),"CAENVME_End");
     }
   
-  std::cout << "Read " << n << " events" << std::endl;
+  std::cout << "\nRead " << n << " events" << std::endl;
   std::cout << "Error in " << nT-n << " events" << std::endl;
+
+  std::cout << "Mean Charge (pC) = " << mqdc << " +/- " << TMath::Sqrt((n>1)?sqdc/(n-1):0) << "  Mean Rise Time (ns) = " << mtdc << " +/- " << TMath::Sqrt((n>1)?stdc/(n-1):0) << std::endl;
+
   tree->Write();
   fileout->Close();
   

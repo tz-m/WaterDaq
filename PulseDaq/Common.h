@@ -14,10 +14,13 @@
 #include <iomanip>
 #include <signal.h>
 #include <bitset>
+#include <deque>
 
 #include "../date/include/date/date.h"
 
 #include "CAENVMElib.h"
+
+#include "TMath.h"
 
 uint32_t BitMask(uint32_t val, uint32_t offset, uint32_t N);
 void handler(int s);
