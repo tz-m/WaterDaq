@@ -127,7 +127,7 @@ int main(int argc, char ** argv)
   try
     {
       std::cout << "Initializing V1718..." << std::endl;
-      checkApiCall(CAENVME_Init(cvV1718, 0, 0, &handle),"CAENVME_Init");
+      checkApiCall(CAENVME_Init(cvV1718, 0, VX1718_USB_CHANNEL, &handle),"CAENVME_Init");
       checkApiCall(CAENVME_SystemReset(handle),"CAENVME_SystemReset");
       usleep(1000000);
       std::cout << "             MQDC32..." << std::endl;

@@ -10,6 +10,8 @@
 #define VX1290A_WINDOW_WIDTH 0x07d0  // 0x07d0 * 25ns = 50us
 #define VX1290A_WINDOW_OFFSET 0xfc18 // 0xfc18 * 25ns = -25us
 
+#define VX1718_USB_CHANNEL 1 // Most likely 0 or 1. To find out easily, use the CAENVMElib/sample program and test different <VMEdevice> values.
+
 #include "Common.h"
 
 class Settings
