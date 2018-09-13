@@ -89,6 +89,15 @@ CVErrorCodes MQDC32_ReadEvent(int32_t handle, MQDC32_Header * head, std::vector<
   do
     {
       ret = MQDC32_Read_Word(handle,&word);
+      if (set.Verbose()) 
+	{
+	  if (ret == cvSuccess) std::cout << "MQDC32_Read_Word return = cvSuccess" << std::endl;
+	  else if (ret == cvBusError) std::cout << "MQDC32_Read_Word return = cvBusError" << std::endl;
+	  else if (ret == cvCommError) std::cout << "MQDC32_Read_Word return = cvCommError" << std::endl;
+	  else if (ret == cvGenericError) std::cout << "MQDC32_Read_Word return = cvGenericError" << std::endl;
+	  else if (ret == cvInvalidParam) std::cout << "MQDC32_Read_Word return = cvInvalidParam" << std::endl;
+	  else if (ret == cvTimeoutError) std::cout << "MQDC32_Read_Word return = cvTimeoutError" << std::endl;
+	}
       if (ret == cvSuccess)
 	{
 	  if (MQDC32_IsHeader(word))

@@ -4,7 +4,7 @@ M. Thiesse
 ----------------------------PulseDaq---------------------------
 
 Prerequisites:
-	ROOT v6.10/06
+	ROOT v6.10/06 (other versions may work, so far only tested with this one)
 	CAENVMElib v2.50
 	reasonably recent Linux distribution with dev headers
 	C++11 or better (whatever is required by ROOT)
@@ -41,3 +41,9 @@ Notes:
 	MQDC32.cc/h contain specific methods to read and write data to and from the Mesytec MQDC-32 via the CAENVMElib base functions. This also contains hardware addresses and controls the parsing of raw data from the hardware registers, which is entirely dependent on the specific information in the module documentation. I cannot stress enough how important every bit of the documentation is in understanding the reason behind the madness in this file. Also, Mesytec doesn't seem to document procedures very well, just definitions. Anyway, hopefully the files here are clear enough to understand how the module works.
 	VX1290A.cc/h contain specific methods to read and write data to and from the CAEN VX1290A TDC via the CAENVMElib base functions. Same as previously, the hardware addresses and methods for accessing the data are included. CAEN documents their module a lot better.
 	The hardest part of developing the DAQ here is knowing in advance when to expect the pulses, in order to setup the TDC settings properly and initiate triggers. Good luck!
+
+
+For help with the TDC, download the CAENV1x90 code from Caen. Install (make && make install) the SDK first (to fix the -Wall,-soname error, just delete ",-soname" from the command in the makefile). Once that is done, build the Demo (make). To use it, 
+    ./CAENV1190Demo -A0xEEEE -M"1, 0, 1, 0x7d0, 0xfc18, 0xfc18, 2, 2, 3, 0xffff, 0xffff, 0xffff, 0xffff" -TV1290A
+
+Make sure the TDC trigger input is 50Ohm terminated, otherwise no triggers will be detected!!!
