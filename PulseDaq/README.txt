@@ -47,3 +47,5 @@ For help with the TDC, download the CAENV1x90 code from Caen. Install (make && m
     ./CAENV1190Demo -A0xEEEE -M"1, 0, 1, 0x7d0, 0xfc18, 0xfc18, 2, 2, 3, 0xffff, 0xffff, 0xffff, 0xffff" -TV1290A
 
 Make sure the TDC trigger input is 50Ohm terminated, otherwise no triggers will be detected!!!
+
+When setting the parameters on the MCFD-16 units, set the gain very low and the threshold high on all unused channels. Only set the correct gain and threshold for the channels you want to read. This is because there is no easy way to enable/disable channels on the MQDC-32, and having non-connected channels triggering on noise only causes large numbers of "Error" pulses (i.e. channel number != MQDC32_CHANNEL_CHARGE).

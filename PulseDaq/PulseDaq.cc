@@ -62,7 +62,9 @@ int main(int argc, char ** argv)
   auto dp = floor<days>(now);
   auto ymd = year_month_day{dp};
   auto time = make_time(std::chrono::duration_cast<std::chrono::milliseconds>(now-dp));
-  TString filename = TString::Format("DAQ_%04i%02i%02i_%02i%02i%02i.root",(int)(ymd.year()),(unsigned)(ymd.month()),(unsigned)(ymd.day()),time.hours().count(),time.minutes().count(),(unsigned)time.seconds().count());
+  TString filename = TString::Format("DAQ_%04i%02i%02i_%02i%02u%02u.root",(int)(ymd.year()),(unsigned)(ymd.month()),(unsigned)(ymd.day()),(unsigned int)(time.hours().count()),(unsigned int)(time.minutes().count()),(unsigned int)(time.seconds().count()));
+
+  std::cout << "Started run: " << (int)(ymd.year()) << "/" << (unsigned)(ymd.month()) << "/" << (unsigned)(ymd.day()) << " " << (unsigned)(time.hours().count()) << ":" << (unsigned)(time.minutes().count()) << ":" << (unsigned)(time.seconds().count()) << std::endl;
 
   TFile * fileout = TFile::Open(filename,"RECREATE");
   UInt_t qdc_adc;
@@ -324,7 +326,14 @@ int main(int argc, char ** argv)
   std::cout << "\nRead " << n << " events" << std::endl;
   std::cout << "Error in " << nT-n << " events" << std::endl;
 
-  std::cout << "Mean Charge (pC) = " << mqdc << " +/- " << TMath::Sqrt((n>1)?sqdc/(n-1):0) << "  Mean Rise Time (ns) = " << mtdc << " +/- " << TMath::Sqrt((n>1)?stdc/(n-1):0) << std::endl;
+  std::cout << "Mean Charge (pC) = " << std::setw(7) << std::setprecision(2) << std::fixed << mqdc << " +/- " << std::setw(7) << std::setprecision(2) << std::fixed << TMath::Sqrt((n>1)?sqdc/(n-1):0) << "  Mean Rise Time (ns) = " << std::setw(6) << std::setprecision(2) << std::fixed << mtdc << " +/- " << std::setw(6) << std::setprecision(2) << std::fixed << TMath::Sqrt((n>1)?stdc/(n-1):0) << std::endl;
+
+  now = std::chrono::system_clock::now();
+  dp = floor<days>(now);
+  ymd = year_month_day{dp};
+  time = make_time(std::chrono::duration_cast<std::chrono::milliseconds>(now-dp));
+
+  std::cout << "Finished run: " << (int)(ymd.year()) << "/" << (unsigned)(ymd.month()) << "/" << (unsigned)(ymd.day()) << " " << (unsigned)(time.hours().count()) << ":" << (unsigned)(time.minutes().count()) << ":" << (unsigned)(time.seconds().count()) << std::endl;
 
   tree->Write();
   fileout->Close();
