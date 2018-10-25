@@ -22,6 +22,10 @@ CVErrorCodes MQDC32_Setup(int32_t Handle)
   checkApiCall(MQDC32_Write_Register(Handle, MQDC32_BASE + MQDC32_START_ACQ, 0x0),"MQDC32_Setup: Write Stop Acquisition");
   checkApiCall(MQDC32_Write_Register(Handle, MQDC32_BASE + MQDC32_SOFT_RESET, 0x1),"MQDC32_Setup: Write Soft Reset");
   usleep(1000000);
+  for (uint32_t chan = 16; chan < 32; ++chan)
+    {
+      checkApiCall(MQDC32_Write_Register(Handle, MQDC32_BASE + 0x4000 + chan,0xFFF1),"MQDC32_Setup: Disable channels 16-32");
+    }
   checkApiCall(MQDC32_Write_Register(Handle, MQDC32_BASE + MQDC32_DATA_LEN_FMT, 0x2),"MQDC32_Setup: Write Data Length Format");
   checkApiCall(MQDC32_Write_Register(Handle, MQDC32_BASE + MQDC32_MULTIEVENT, 0x0),"MQDC32_Setup: Write Multievent Off");
   checkApiCall(MQDC32_Write_Register(Handle, MQDC32_BASE + MQDC32_MARKING_TYPE, 0x1),"MQDC32_Setup: Write EoE Mark");
@@ -30,6 +34,9 @@ CVErrorCodes MQDC32_Setup(int32_t Handle)
   checkApiCall(MQDC32_Write_Register(Handle, MQDC32_BASE + MQDC32_READOUT_RESET, 0x0),"MQDC32_Setup: Write Readout Reset");
   checkApiCall(MQDC32_Write_Register(Handle, MQDC32_BASE + MQDC32_START_ACQ, 0x1),"MQDC32_Setup: Start Acquisition");
   //usleep(1000000);
+
+
+  
   return cvSuccess;
 }
 
@@ -109,7 +116,18 @@ CVErrorCodes MQDC32_ReadEvent(int32_t handle, MQDC32_Header * head, std::vector<
 	    {
 	      MQDC32_Data d;
 	      MQDC32_ParseDataWord(word,&d);
-	      if (d.channel != MQDC32_CHANNEL_CHARGE) 
+
+	      bool isValidChan = false;
+	      for (auto & elem : set.MQDC32_CHANNEL_CHARGE())
+		{
+		  if (elem==d.channel)
+		    {
+		      isValidChan=true;
+		      break;
+		    }
+		}
+	      
+	      if (!isValidChan)
 		{
 		  if (set.Verbose()) d.Print();
 		  continue;

@@ -129,7 +129,7 @@ int main(int argc, char ** argv)
   try
     {
       std::cout << "Initializing V1718..." << std::endl;
-      checkApiCall(CAENVME_Init(cvV1718, 0, VX1718_USB_CHANNEL, &handle),"CAENVME_Init");
+      checkApiCall(CAENVME_Init(cvV1718, 0, set.VX1718_USB_CHANNEL(), &handle),"CAENVME_Init");
       checkApiCall(CAENVME_SystemReset(handle),"CAENVME_SystemReset");
       usleep(1000000);
       std::cout << "             MQDC32..." << std::endl;
@@ -137,7 +137,7 @@ int main(int argc, char ** argv)
       if (set.UseTDC())
 	{
 	  std::cout << "             VX1290A..." << std::endl;
-	  checkApiCall(VX1290A_Setup(handle),"VX1290A_Setup");
+	  checkApiCall(VX1290A_Setup(handle,set),"VX1290A_Setup");
 	}
       
       while (n < set.NumEvents())
@@ -191,95 +191,142 @@ int main(int argc, char ** argv)
 	      gt.Print();
 	    }
 	  */
+
 	  
 	  /////////////////////////////////////////////
 	  // Acquire data here and fill output TTree //
 	  /////////////////////////////////////////////
-	  if (data.size() == 1 && data[0].channel == MQDC32_CHANNEL_CHARGE)
+	  
+	  std::vector<uint32_t> measuredQDCchannels;
+	  for (auto d : data)
 	    {
-	      qdc_adc = data[0].adc;
-	      qdc_pC = qdc_adc*ADCtopC;
-	      qdc_overflow = data[0].overflow;
-	      qdc_channel = data[0].channel;
-	      qdc_timestamp = eoe.timestamp;
-	      qdc_charge = qdc_adc*ADCtopC;
-	      
-	      if (set.UseTDC() && tm.size() == 2 && ((tm[0].channel == VX1290A_CHANNEL_LE && tm[1].channel == VX1290A_CHANNEL_MAX) || (tm[0].channel == VX1290A_CHANNEL_MAX && tm[1].channel == VX1290A_CHANNEL_LE)))
-		{  
-		  if (tm[0].channel == VX1290A_CHANNEL_LE)
-		    {
-		      tdc_tdc1 = tm[0].tdc_meas;
-		      tdc_tdc2 = tm[1].tdc_meas;
-		      tdc_channel1 = tm[0].channel;
-		      tdc_channel2 = tm[1].channel;
-		    }
-		  else if (tm[1].channel == VX1290A_CHANNEL_LE)
-		    {
-		      tdc_tdc1 = tm[1].tdc_meas;
-		      tdc_tdc2 = tm[0].tdc_meas;
-		      tdc_channel1 = tm[1].channel;
-		      tdc_channel2 = tm[0].channel;
-		    }
-		  tdc_timestamp = gtt.trig_time;
-		}
-	      else
-		{
-		  tdc_tdc1 = 0;
-		  tdc_tdc2 = 0;
-		  tdc_channel1 = 0;
-		  tdc_channel2 = 0;
-		  tdc_timestamp = 0;
-		}
-	      risetime = (std::max(tdc_tdc1,tdc_tdc2)-std::min(tdc_tdc1,tdc_tdc2))*0.025;
-	      
-	      now = std::chrono::system_clock::now();
-	      dp = floor<days>(now);
-	      ymd = year_month_day{dp};
-	      time = make_time(std::chrono::duration_cast<std::chrono::milliseconds>(now-dp));
-	      year = (int)(ymd.year());
-	      month = (unsigned)(ymd.month());
-	      day = (unsigned)(ymd.day());
-	      hour = time.hours().count();
-	      minute = time.minutes().count();
-	      second = time.seconds().count();
-	      millisecond = time.subseconds().count();
-	      
-	      tree->Fill();
-
-	      if (n == 0) 
-		{
-		  mqdc = qdc_charge;
-		  sqdc = 0;
-		  mtdc = risetime;
-		  stdc = 0;
-		}
-	      else
-		{
-		  mqdc_last = mqdc;
-		  mqdc = mqdc_last + (qdc_charge - mqdc_last)/n;
-		  sqdc_last = sqdc;
-		  sqdc = sqdc_last + (qdc_charge - mqdc_last)*(qdc_charge - mqdc);
-		  mtdc_last = mtdc;
-		  mtdc = mtdc_last + (risetime - mtdc_last)/n;
-		  stdc_last = stdc;
-		  stdc = stdc_last + (risetime - mtdc_last)*(risetime - mtdc);
-		}
-
-	      if (set.UseInteractive())
-		{
-		  windowQDC.push_back(qdc_charge);
-		  windowTDC.push_back(risetime);
-		  if (windowQDC.size() > set.Interactive())
-		    {
-		      windowQDC.pop_front();
-		      windowTDC.pop_front();
-		      if (n % set.Interactive() == 0) std::cout << "\rPulse " << n << ": Charge (pC) = " << std::setw(7) << std::setprecision(2) << std::fixed << TMath::Mean(windowQDC.begin(),windowQDC.end()) << " +/- " << std::setw(7) << std::setprecision(2) << std::fixed << TMath::StdDev(windowQDC.begin(),windowQDC.end()) << ",  Rise Time (ns) = " << std::setw(6) << std::setprecision(2) << std::fixed << TMath::Mean(windowTDC.begin(),windowTDC.end()) << " +/- " << std::setw(6) << std::setprecision(2) << std::fixed << TMath::StdDev(windowTDC.begin(),windowTDC.end()) << std::flush;
-		    }
-		}
-
-	      ++n;
-	      usleep(set.Delay());
+	      measuredQDCchannels.push_back(d.channel);
 	    }
+	  bool correctQDCchannels = (measuredQDCchannels.size() == set.MQDC32_CHANNEL_CHARGE().size());
+	  for (auto d : set.MQDC32_CHANNEL_CHARGE())
+	    {
+	      int count = 0;
+	      for (auto mc : measuredQDCchannels)
+		{
+		  if (mc == d) ++count;
+		}
+	      correctQDCchannels = correctQDCchannels && (count==1);
+	    }
+	  // Here, correctQDCchannels should be true if good data
+
+	  std::vector<uint32_t> measuredTDCchannels;
+	  for (auto t : tm)
+	    {
+	      measuredTDCchannels.push_back(t.channel);
+	    }
+	  bool correctTDCchannels = (measuredTDCchannels.size() == set.VX1290A_CHANNEL_LE().size()+set.VX1290A_CHANNEL_MAX().size()) && set.UseTDC();
+	  for (auto d : set.VX1290A_CHANNEL_LE())
+	    {
+	      int count = 0;
+	      for (auto mt : measuredTDCchannels)
+		{
+		  if (d == mt) ++count;
+		}
+	      correctTDCchannels = correctTDCchannels && (count==1);
+	    }
+	  for (auto d : set.VX1290A_CHANNEL_MAX())
+	    {
+	      int count = 0;
+	      for (auto mt : measuredTDCchannels)
+		{
+		  if (d == mt) ++count;
+		}
+	      correctTDCchannels = correctTDCchannels && (count==1);
+	    }
+	  // Here, correctTDCchannels should be true if TDC is enabled and good data.
+
+	  if (correctQDCchannels)
+	    {
+	      for (size_t id = 0; id < data.size(); ++id)
+		{
+		  qdc_adc = data[id].adc;
+		  qdc_pC = qdc_adc*ADCtopC;
+		  qdc_overflow = data[id].overflow;
+		  qdc_channel = data[id].channel;
+		  qdc_timestamp = eoe.timestamp;
+		  qdc_charge = qdc_adc*ADCtopC;
+
+		  if (correctTDCchannels)
+		    {
+		      size_t tmlocLE, tmlocMAX;
+		      for (size_t it = 0; it < tm.size(); ++it)
+			{
+			  if (tm[it].channel == set.VX1290A_CHANNEL_LE()[id]) tmlocLE=it;
+			  else if (tm[it].channel == set.VX1290A_CHANNEL_MAX()[id]) tmlocMAX=it;
+			}
+		      tdc_tdc1 = tm[tmlocLE].tdc_meas;
+		      tdc_tdc2 = tm[tmlocMAX].tdc_meas;
+		      tdc_channel1 = tm[tmlocLE].channel;
+		      tdc_channel2 = tm[tmlocMAX].channel;
+		      tdc_timestamp = gtt.trig_time;
+		    }
+		  else
+		    {
+		      tdc_tdc1 = 0;
+		      tdc_tdc2 = 0;
+		      tdc_channel1 = 0;
+		      tdc_channel2 = 0;
+		      tdc_timestamp = 0;
+		    }
+		  risetime = (std::max(tdc_tdc1,tdc_tdc2)-std::min(tdc_tdc1,tdc_tdc2))*0.025;
+
+		  now = std::chrono::system_clock::now();
+		  dp = floor<days>(now);
+		  ymd = year_month_day{dp};
+		  time = make_time(std::chrono::duration_cast<std::chrono::milliseconds>(now-dp));
+		  year = (int)(ymd.year());
+		  month = (unsigned)(ymd.month());
+		  day = (unsigned)(ymd.day());
+		  hour = time.hours().count();
+		  minute = time.minutes().count();
+		  second = time.seconds().count();
+		  millisecond = time.subseconds().count();
+		  
+		  if (!set.UseTDC() || (set.UseTDC() && correctTDCchannels)) tree->Fill();
+
+		  if (data[id].channel == set.MQDC32_CHANNEL_CHARGE()[0])
+		    {
+		      if (n == 0) 
+			{
+			  mqdc = qdc_charge;
+			  sqdc = 0;
+			  mtdc = risetime;
+			  stdc = 0;
+			}
+		      else
+			{
+			  mqdc_last = mqdc;
+			  mqdc = mqdc_last + (qdc_charge - mqdc_last)/n;
+			  sqdc_last = sqdc;
+			  sqdc = sqdc_last + (qdc_charge - mqdc_last)*(qdc_charge - mqdc);
+			  mtdc_last = mtdc;
+			  mtdc = mtdc_last + (risetime - mtdc_last)/n;
+			  stdc_last = stdc;
+			  stdc = stdc_last + (risetime - mtdc_last)*(risetime - mtdc);
+			}
+		      
+		      if (set.UseInteractive())
+			{
+			  windowQDC.push_back(qdc_charge);
+			  windowTDC.push_back(risetime);
+			  if (windowQDC.size() > set.Interactive())
+			    {
+			      windowQDC.pop_front();
+			      windowTDC.pop_front();
+			      if (n % set.Interactive() == 0) std::cout << "\rPulse " << n << ": Charge (pC) = " << std::setw(7) << std::setprecision(2) << std::fixed << TMath::Mean(windowQDC.begin(),windowQDC.end()) << " +/- " << std::setw(7) << std::setprecision(2) << std::fixed << TMath::StdDev(windowQDC.begin(),windowQDC.end()) << ",  Rise Time (ns) = " << std::setw(6) << std::setprecision(2) << std::fixed << TMath::Mean(windowTDC.begin(),windowTDC.end()) << " +/- " << std::setw(6) << std::setprecision(2) << std::fixed << TMath::StdDev(windowTDC.begin(),windowTDC.end()) << std::flush;
+			    }
+			}
+		      if ((correctQDCchannels && !set.UseTDC()) || (correctQDCchannels && set.UseTDC() && correctTDCchannels)) ++n;
+		      usleep(set.Delay());    
+		    }
+		}
+	    }
+
 	  ///////////////////////////////////////////
 	  // Finished writing data to output TTree //
 	  ///////////////////////////////////////////

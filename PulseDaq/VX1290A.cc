@@ -63,7 +63,7 @@ CVErrorCodes VX1290A_TouchWrite_OpCode(int32_t Handle, uint32_t opaddress, uint3
   return VX1290A_Write_OpCode(Handle, data);
 }
 
-CVErrorCodes VX1290A_Setup(int32_t Handle)
+CVErrorCodes VX1290A_Setup(int32_t Handle, Settings set)
 {
   // Set event BERR enable (writing to control register automatically clears the module)
   uint32_t ctrl;
@@ -78,10 +78,10 @@ CVErrorCodes VX1290A_Setup(int32_t Handle)
   checkApiCall(VX1290A_Write_OpCode(Handle, VX1290A_TRG_MATCH_OPCODE),"VX1290A_Write_OpCode: Trigger Mode"); 
   
   //Set Window Width to 0x7d0 * 25ns = 50us
-  checkApiCall(VX1290A_TouchWrite_OpCode(Handle, VX1290A_SET_WIN_WIDTH_OPCODE,VX1290A_WINDOW_WIDTH),"VX1290A_TouchWriteOpCode: Set Window Width");
+  checkApiCall(VX1290A_TouchWrite_OpCode(Handle, VX1290A_SET_WIN_WIDTH_OPCODE,set.VX1290A_WINDOW_WIDTH()),"VX1290A_TouchWriteOpCode: Set Window Width");
   
   //Set window offset to 0xfc18 * 25ns = -25us
-  checkApiCall(VX1290A_TouchWrite_OpCode(Handle, VX1290A_SET_WIN_OFFSET_OPCODE,VX1290A_WINDOW_OFFSET),"VX1290A_TouchWriteOpCode: Set Window Offset");
+  checkApiCall(VX1290A_TouchWrite_OpCode(Handle, VX1290A_SET_WIN_OFFSET_OPCODE,set.VX1290A_WINDOW_OFFSET()),"VX1290A_TouchWriteOpCode: Set Window Offset");
 
   //Enable subtraction of trigger time
   checkApiCall(VX1290A_Write_OpCode(Handle, VX1290A_EN_SUB_TRG_OPCODE),"VX1290A_Write_OpCode: Enable trigger time subtraction");
@@ -95,8 +95,10 @@ CVErrorCodes VX1290A_Setup(int32_t Handle)
   //Disable all channels
   checkApiCall(VX1290A_Write_OpCode(Handle, VX1290A_DIS_ALL_CH_OPCODE),"VX1290A_Write_OpCode: Disable all channels");
   // Enable two channels
-  checkApiCall(VX1290A_Write_OpCode(Handle, VX1290A_EN_CHANNEL_OPCODE + VX1290A_CHANNEL_LE),"VX1290A_Write_OpCode: Enable channel LE");
-  checkApiCall(VX1290A_Write_OpCode(Handle, VX1290A_EN_CHANNEL_OPCODE + VX1290A_CHANNEL_MAX),"VX1290A_Write_OpCode: Enable channel MAX");
+  for (auto c : set.VX1290A_CHANNEL_LE())
+    checkApiCall(VX1290A_Write_OpCode(Handle, VX1290A_EN_CHANNEL_OPCODE + c),"VX1290A_Write_OpCode: Enable channel LE");
+  for (auto c : set.VX1290A_CHANNEL_MAX())
+    checkApiCall(VX1290A_Write_OpCode(Handle, VX1290A_EN_CHANNEL_OPCODE + c),"VX1290A_Write_OpCode: Enable channel MAX");
 
   Status stat;
   checkApiCall(VX1290A_Status(Handle, &stat),"VX1290A_Status");
@@ -190,8 +192,10 @@ CVErrorCodes VX1290A_ReadEvent(int32_t Handle,
 	    {
 	      VX1290A_TDCMeasurement m;
 	      VX1290A_ParseTDCMeasurement(word,&m);
-	      if (m.channel == VX1290A_CHANNEL_LE || 
-	      m.channel == VX1290A_CHANNEL_MAX) 
+	      if (std::find(set.VX1290A_CHANNEL_LE().begin(),set.VX1290A_CHANNEL_LE().end(),m.channel) != set.VX1290A_CHANNEL_LE().end() ||
+		  std::find(set.VX1290A_CHANNEL_MAX().begin(),set.VX1290A_CHANNEL_MAX().end(),m.channel) != set.VX1290A_CHANNEL_MAX().end())
+		//if (m.channel == VX1290A_CHANNEL_LE || 
+		//m.channel == VX1290A_CHANNEL_MAX) 
 		{
 		  if (set.Verbose()) 
 		    {

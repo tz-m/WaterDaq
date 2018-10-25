@@ -161,7 +161,7 @@ CVErrorCodes VX1290A_TouchRead_OpCode(int32_t Handle, uint32_t opaddress, uint32
 CVErrorCodes VX1290A_Read_OpCode(int32_t Handle, uint32_t opaddress);
 CVErrorCodes VX1290A_Read_Word(int32_t Handle, uint32_t * data);
 
-CVErrorCodes VX1290A_Setup(int32_t Handle);
+CVErrorCodes VX1290A_Setup(int32_t Handle, Settings set);
 
 CVErrorCodes VX1290A_Status(int32_t Handle, Status * status);
 CVErrorCodes VX1290A_Clear(int32_t Handle);

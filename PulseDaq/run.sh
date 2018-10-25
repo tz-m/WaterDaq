@@ -3,6 +3,6 @@
 for i in `seq 1 2000`;
 do
     echo "$i"
-    time ./PulseDaq -n 2e5 -d 0 -i 100
+    ./PulseDaq -n 2e5 -d 0 -i 100 -tdc
     sleep 60
 done
