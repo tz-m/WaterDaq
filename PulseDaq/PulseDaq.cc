@@ -53,7 +53,7 @@ int main(int argc, char ** argv)
 	      std::cout << "need to specify a config file!" << std::endl;
 	      return 0;
 	    }
-	  set.SetConfigFile(argv[i]);
+	  set.SetConfigFile(argv[i+1]);
 	  ++i;
 	}
     }
