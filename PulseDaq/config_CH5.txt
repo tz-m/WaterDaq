@@ -1,0 +1,13 @@
+# Most likely 0 or 1. Use CAENVMElib sample with different <VMEdevice> values
+VX1718_USB_CHANNEL 1
+
+# MQDC32 settings. Use list of channels to enable
+# MQDC32_BASE 0x11110000
+MQDC32_CHANNEL_CHARGE 0x5
+
+# VX1290A settings. Use list of channels to enable
+# VX1290A_BASE 0xEEEE0000
+VX1290A_CHANNEL_LE 0x5
+VX1290A_CHANNEL_MAX 0x1b
+VX1290A_WINDOW_WIDTH 0x0014
+VX1290A_WINDOW_OFFSET 0xfff6

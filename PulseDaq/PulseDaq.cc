@@ -46,14 +46,28 @@ int main(int argc, char ** argv)
 	{
 	  set.SetUseTDC(true);
 	}
+      else if (!strcmp(argv[i],"-config"))
+	{
+	  if (i+2 > argc)
+	    {
+	      std::cout << "need to specify a config file!" << std::endl;
+	      return 0;
+	    }
+	  set.SetConfigFile(argv[i]);
+	  ++i;
+	}
     }
   if (!(set.IsValid()))
     {
-      std::cout << "I need more information!!!" << std::endl
-		<< "  Tell me how many events to record:" << std::endl
-		<< "     -n [number]" << std::endl
-		<< "  and the delay time between recorded events" << std::endl
-		<< "     -d [number of microseconds]" << std::endl;
+      std::cout << "Usage: ./PulseDaq" << std::endl;
+      std::cout << "Required parameters:" << std::endl;
+      std::cout << "     -n [number of events] , number of events to record" << std::endl;
+      std::cout << "     -d [number of microseconds] , delay time between recorded events" << std::endl;
+      std::cout << "     -config [filename] , filename containing configuration file specified in User_Settings.cc" << std::endl;
+      std::cout << "Optional parameters:" << std::endl;
+      std::cout << "     -tdc , include if TDC information is to be recorded" << std::endl;
+      std::cout << "     -v , verbose output to terminal" << std::endl;
+      std::cout << "     -i [number of events] , \"interactive mode\": during recording show average of a specified number of recent measurements" << std::endl;
       return 0;
     }
 

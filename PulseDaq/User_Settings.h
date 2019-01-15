@@ -25,6 +25,7 @@ class Settings
   void SetDelay(uint32_t d);
   void SetInteractive(uint32_t i);
   void SetUseTDC(bool d);
+  void SetConfigFile(std::string filename);
   bool Verbose();
   uint32_t NumEvents();
   uint32_t Delay();
@@ -49,7 +50,8 @@ class Settings
   bool setDelay;
   bool setInteractive;
   bool setTDC;
-
+  bool setConfigFile;
+  
   bool verb;
   uint32_t num;
   uint32_t del;

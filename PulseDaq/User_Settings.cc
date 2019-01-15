@@ -12,13 +12,12 @@ Settings::Settings()
     inter(1),
     tdc(false)
 {
-  ReadConfigFile("config.txt");
 }
 
 bool Settings::IsValid()
 {
   // verbose is optional, so not a requirement for validation
-  return (setNumEvents && setDelay);
+  return (setNumEvents && setDelay && setConfigFile);
 }
 
 
@@ -50,6 +49,12 @@ void Settings::SetUseTDC(bool d)
 {
   setTDC = true;
   tdc = d;
+}
+
+void Settings::SetConfigFile(std::string filename)
+{
+  setConfigFile = true;
+  ReadConfigFile(filename);
 }
 
 bool Settings::Verbose()
