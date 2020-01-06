@@ -153,6 +153,9 @@ int main(int argc, char ** argv)
 	  std::cout << "             VX1290A..." << std::endl;
 	  checkApiCall(VX1290A_Setup(handle,set),"VX1290A_Setup");
 	}
+
+      auto before_time = std::chrono::high_resolution_clock::now();
+      auto after_time = std::chrono::high_resolution_clock::now();
       
       while (n < set.NumEvents())
 	{
@@ -216,7 +219,8 @@ int main(int argc, char ** argv)
 	    {
 	      measuredQDCchannels.push_back(d.channel);
 	    }
-	  bool correctQDCchannels = (measuredQDCchannels.size() == set.MQDC32_CHANNEL_CHARGE().size());
+	  bool correctQDCchannels = (measuredQDCchannels.size() <= set.MQDC32_CHANNEL_CHARGE().size());// OR
+	  //bool correctQDCchannels = (measuredQDCchannels.size() == set.MQDC32_CHANNEL_CHARGE().size());// AND
 	  for (auto d : set.MQDC32_CHANNEL_CHARGE())
 	    {
 	      int count = 0;
@@ -224,7 +228,8 @@ int main(int argc, char ** argv)
 		{
 		  if (mc == d) ++count;
 		}
-	      correctQDCchannels = correctQDCchannels && (count==1);
+	      correctQDCchannels = correctQDCchannels || (count==1);// OR
+	      //correctQDCchannels = correctQDCchannels && (count==1);// AND
 	    }
 	  // Here, correctQDCchannels should be true if good data
 
@@ -332,7 +337,15 @@ int main(int argc, char ** argv)
 			    {
 			      windowQDC.pop_front();
 			      windowTDC.pop_front();
-			      if (n % set.Interactive() == 0) std::cout << "\rPulse " << n << ": Charge (pC) = " << std::setw(7) << std::setprecision(2) << std::fixed << TMath::Mean(windowQDC.begin(),windowQDC.end()) << " +/- " << std::setw(7) << std::setprecision(2) << std::fixed << TMath::StdDev(windowQDC.begin(),windowQDC.end()) << ",  Rise Time (ns) = " << std::setw(6) << std::setprecision(2) << std::fixed << TMath::Mean(windowTDC.begin(),windowTDC.end()) << " +/- " << std::setw(6) << std::setprecision(2) << std::fixed << TMath::StdDev(windowTDC.begin(),windowTDC.end()) << std::flush;
+			      if (n % set.Interactive() == 0)
+				{
+				  std::cout << "\rPulse " << n << ": Charge (pC) = " << std::setw(7) << std::setprecision(2) << std::fixed << TMath::Mean(windowQDC.begin(),windowQDC.end()) << " +/- " << std::setw(7) << std::setprecision(2) << std::fixed << TMath::StdDev(windowQDC.begin(),windowQDC.end()) << "," << std::flush;
+				  if (set.UseTDC()) std::cout << "  Rise Time (ns) = " << std::setw(6) << std::setprecision(2) << std::fixed << TMath::Mean(windowTDC.begin(),windowTDC.end()) << " +/- " << std::setw(6) << std::setprecision(2) << std::fixed << TMath::StdDev(windowTDC.begin(),windowTDC.end()) << "," << std::flush;
+				  after_time = std::chrono::high_resolution_clock::now();
+				  double interactive_duration = std::chrono::duration_cast<std::chrono::milliseconds>(after_time - before_time).count();
+				  std::cout << "  Record Frequency = " << 1000*set.Interactive() / interactive_duration << " Hz." << std::flush;
+				  before_time = after_time;
+				}
 			    }
 			}
 		      if ((correctQDCchannels && !set.UseTDC()) || (correctQDCchannels && set.UseTDC() && correctTDCchannels)) ++n;
