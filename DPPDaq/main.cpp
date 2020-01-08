@@ -17,6 +17,12 @@ typedef struct {
   CAEN_DGTZ_IOLevel_t IOlev;
 } DigitizerParams_t;
 
+typedef struct {
+  uint32_t InputDynamicRange[8];
+  uint32_t PreTriggerSize[8];
+  uint32_t ChannelDCOffset[8];
+} AdditionalChannelParams_t;
+
 void CheckErrorCode(CAEN_DGTZ_ErrorCode ret, std::string caller)
 {
   switch (ret) {
@@ -95,6 +101,14 @@ void CheckErrorCode(CAEN_DGTZ_ErrorCode ret, std::string caller)
   if (ret != CAEN_DGTZ_Success) exit(ret);
 }
 
+uint32_t ExtractBits(uint32_t value, uint32_t nbits, uint32_t startbit)
+{
+  // value = the value from you which you would like to extract a subset of bits
+  // nbits = the number of bits you want to extract
+  // startbit = the starting bit number you want. For example, if you want to start with the third bit, use startbit=2.
+  return (((1 << nbits) - 1) & (value >> startbit));
+}
+
 
 int main(int /*argc*/, char ** /*argv*/)
 {
@@ -109,11 +123,13 @@ int main(int /*argc*/, char ** /*argv*/)
   // digitizer configuration parameters
   CAEN_DGTZ_DPP_PHA_Params_t DPPParams;
   DigitizerParams_t Params;
+  AdditionalChannelParams_t MoreChanParams;
 
   // set parameters
   uint32_t NumEvents[8];
   memset(&Params, 0, sizeof(DigitizerParams_t));
   memset(&DPPParams, 0, sizeof(CAEN_DGTZ_DPP_PHA_Params_t));
+  memset(&MoreChanParams, 0, sizeof(AdditionalChannelParams_t));
 
   //communication parameters
   Params.LinkType = CAEN_DGTZ_USB;
@@ -122,35 +138,38 @@ int main(int /*argc*/, char ** /*argv*/)
 
   //acquisition parameters
   Params.AcqMode = CAEN_DGTZ_DPP_ACQ_MODE_List;
-  Params.RecordLength = 2000;
+  Params.RecordLength = 10000;// Number of samples at 2ns per sample
   Params.ChannelMask = (1<<0) + (1<<1) + (0<<2) + (0<<3) + (0<<4) + (0<<5) + (0<<6) + (0<<7); // {1=enable, 0=disable} << =left.bit.shift {channel number}
-  Params.EventAggr = 0;
+  Params.EventAggr = 0;//0 = automatic
   Params.PulsePolarity = CAEN_DGTZ_PulsePolarityPositive;
 
   for (int ch = 0; ch < 8; ch++)
     {
-      DPPParams.thr[ch] = 50;
-      DPPParams.k[ch] = 6000;
-      DPPParams.m[ch] = 1000;
-      DPPParams.M[ch] = 110000;
-      DPPParams.ftd[ch] = 800;
-      DPPParams.a[ch] = 16;
-      DPPParams.b[ch] = 296;
-      DPPParams.trgho[ch] = 496;
-      DPPParams.nsbl[ch] = 6;
-      DPPParams.nspk[ch] = 2;
-      DPPParams.pkho[ch] = 960;
-      DPPParams.blho[ch] = 500;
-      DPPParams.enf[ch] = 1.0;
+      DPPParams.thr[ch] = 50;// discriminator threshold (LSB)
+      DPPParams.k[ch] = 6000;// trap rise time (ns)
+      DPPParams.m[ch] = 1000;// trap flat top (ns)
+      DPPParams.M[ch] = 110000;// Exponential decay time of the preamp (ns)
+      DPPParams.ftd[ch] = 0.8*DPPParams.m[ch];// flat top delay ("PEAKING TIME"), 80% of flat top is a good value
+      DPPParams.a[ch] = 16;// RC-CR2 smoothing factor
+      DPPParams.b[ch] = 312;//input rise time (ns)
+      DPPParams.trgho[ch] = 496;// Trigger hold-off
+      DPPParams.nsbl[ch] = 3;// Num samples in baseline averaging
+      DPPParams.nspk[ch] = 2;// peak mean 0x2 = 0b10 corresponds to 16 samples
+      DPPParams.pkho[ch] = 960;// peak hold-off
+      DPPParams.blho[ch] = 500;// baseline hold-off
+      DPPParams.enf[ch] = 1.0;// energy normalisation factor
       DPPParams.decimation[ch] = 0;
       DPPParams.dgain[ch] = 0;
       DPPParams.otrej[ch] = 0;
-      DPPParams.trgwin[ch] = 0;
-      DPPParams.twwdt[ch] = 100;
+      DPPParams.trgwin[ch] = 1;// enable/disable rise time discriminator
+      DPPParams.twwdt[ch] = 312;// rise time validation window
+      MoreChanParams.InputDynamicRange[ch] = 0;
+      MoreChanParams.PreTriggerSize[ch] = 1000;
+      MoreChanParams.ChannelDCOffset[ch] = 0xCCCC;
     }
-  
+
   CheckErrorCode(CAEN_DGTZ_OpenDigitizer(Params.LinkType,0,0,Params.VMEBaseAddress,&handle),"OpenDigitizer");
-  
+
   CAEN_DGTZ_BoardInfo_t BoardInfo;
   CheckErrorCode(CAEN_DGTZ_GetInfo(handle,&BoardInfo),"GetInfo");
   std::cout << "  ModelName: " << BoardInfo.ModelName << std::endl;
@@ -167,21 +186,20 @@ int main(int /*argc*/, char ** /*argv*/)
   std::cout << "  VMEHandle: " << BoardInfo.VMEHandle << std::endl;
   std::cout << "  License: " << BoardInfo.License << std::endl;
 
+  uint32_t value;
+
   ////////////////////////////////
   //Write configuration to board//
   ////////////////////////////////
-
-  uint32_t value;
 
   CheckErrorCode(CAEN_DGTZ_Reset(handle),"Reset");
   CheckErrorCode(CAEN_DGTZ_WriteRegister(handle,0x8000,0x004E0115),"WriteRegister(0x8000)");
   CheckErrorCode(CAEN_DGTZ_SetDPPAcquisitionMode(handle, Params.AcqMode, CAEN_DGTZ_DPP_SAVE_PARAM_EnergyAndTime),"SetDPPAcquisitionMode");
   CheckErrorCode(CAEN_DGTZ_SetAcquisitionMode(handle, CAEN_DGTZ_SW_CONTROLLED),"SetAcquisitionMode");
-  CheckErrorCode(CAEN_DGTZ_SetRecordLength(handle, Params.RecordLength),"SetRecordLength");
+  CheckErrorCode(CAEN_DGTZ_SetRecordLength(handle, Params.RecordLength),"SetRecordLength");//This value is Ns (number of samples, at 2ns per sample. So Ns=10k is 20us)
   CheckErrorCode(CAEN_DGTZ_SetIOLevel(handle, Params.IOlev),"SetIOLevel");
   CheckErrorCode(CAEN_DGTZ_SetExtTriggerInputMode(handle, CAEN_DGTZ_TRGMODE_ACQ_AND_EXTOUT),"SetExtTriggerInputMode");
   CheckErrorCode(CAEN_DGTZ_SetChannelEnableMask(handle, Params.ChannelMask),"SetChannelEnableMask");
-  CheckErrorCode(CAEN_DGTZ_SetDPPEventAggregation(handle, Params.EventAggr, 0),"SetDPPEventAggregation");
   CheckErrorCode(CAEN_DGTZ_SetRunSynchronizationMode(handle, CAEN_DGTZ_RUN_SYNC_Disabled),"SetRunSynchronizationMode");
   CheckErrorCode(CAEN_DGTZ_SetDPPParameters(handle, Params.ChannelMask, &DPPParams),"SetDPPParameters");
 
@@ -197,26 +215,92 @@ int main(int /*argc*/, char ** /*argv*/)
   for (int i = 0; i < 8; i++)
     {
       if (Params.ChannelMask & (1<<i)) {
-          CheckErrorCode(CAEN_DGTZ_SetChannelDCOffset(handle, i, 0xCCCC),"SetChannelDCOffset");
-          CheckErrorCode(CAEN_DGTZ_SetDPPPreTriggerSize(handle, i, 1000),"SetDPPPreTriggerSize");
+          CheckErrorCode(CAEN_DGTZ_SetChannelDCOffset(handle, i, MoreChanParams.ChannelDCOffset[i]),"SetChannelDCOffset");
+          CheckErrorCode(CAEN_DGTZ_SetDPPPreTriggerSize(handle, i, MoreChanParams.PreTriggerSize[i]),"SetDPPPreTriggerSize");
           CheckErrorCode(CAEN_DGTZ_SetChannelPulsePolarity(handle, i, Params.PulsePolarity),"SetChannelPulsePolarity");
 
+          // Disable self trigger (set bit 24 to 1)
           CheckErrorCode(CAEN_DGTZ_ReadRegister(handle, 0x1080+i*0x100, &value),"ReadRegister(0x1080)");
           value |= 1UL << 24;
           CheckErrorCode(CAEN_DGTZ_WriteRegister(handle, 0x1080+i*0x100, value),"WriteRegister(0x1080)");
+
+          // set input dynamic range
+          CheckErrorCode(CAEN_DGTZ_WriteRegister(handle, 0x1028+i*0x100, MoreChanParams.InputDynamicRange[i]),"SetInputDynamicRange");
         }
     }
+  CheckErrorCode(CAEN_DGTZ_SetDPPEventAggregation(handle, Params.EventAggr, 0),"SetDPPEventAggregation");
 
   uint32_t AllocatedSize;
   CheckErrorCode(CAEN_DGTZ_MallocReadoutBuffer(handle, &buffer, &AllocatedSize),"MallocReadoutBuffer");
   CheckErrorCode(CAEN_DGTZ_MallocDPPEvents(handle, (void**)Events, &AllocatedSize),"MallocDPPEvents");
   //CheckErrorCode(CAEN_DGTZ_MallocDPPWaveforms(handle, &Waveform, &AllocatedSize),"MallocDPPWaveforms");
 
+
+  /*Check All Parameters*/
+
+  //Global
+  CheckErrorCode(CAEN_DGTZ_GetRecordLength(handle,&value),"GetRecordLength");
+  std::cout << "GetRecordLength: " << value << std::endl;
+  CheckErrorCode(CAEN_DGTZ_GetNumEventsPerAggregate(handle,&value),"GetNumEventsPerAggregate");
+  std::cout << "GetNumEventsPerAggregate: " << value << std::endl;
+
+  //Channel
+  for (int i = 0; i < 8; i++)
+    {
+      if (Params.ChannelMask & (1<<i)) {
+          CheckErrorCode(CAEN_DGTZ_GetRecordLength(handle,&value,i),"GetRecordLengthChannelI");
+          std::cout << "Ch" << i << " Record Length; " << value*2 << " ns" << std::endl;
+          CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x1028+i*0x100,&value),"ReadChannelIInputDynamicRange");
+          std::cout << "Ch" << i << " Input Dynamic Range: " << ((value==0)?"2 Vpp":((value==1)?"0.5 Vpp":"Invalid")) << std::endl;
+          CheckErrorCode(CAEN_DGTZ_GetNumEventsPerAggregate(handle,&value,i),"GetNumEventsPerAggregateChannelI");
+          std::cout << "Ch" << i << " NumEventsPerAggregate: " << value << std::endl;
+          CheckErrorCode(CAEN_DGTZ_GetDPPPreTriggerSize(handle,i,&value),"GetDPPPreTriggerSize");
+          std::cout << "Ch" << i << " PreTrigger: " << value*2 << " ns" << std::endl;
+          CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x104C+i*0x100,&value),"ReadFineGainChannelI");
+          std::cout << "Ch" << i << " Fine Gain: " << value << " (if =250, fg is probably 1.0)" << std::endl;
+          CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x1054+i*0x100,&value),"ReadRC-CR2SmootingFactorChannelI");
+          std::cout << "Ch" << i << " RC-CR2 Smoothing Factor: " << value << std::endl;
+          CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x1058+i*0x100,&value),"ReadInputRiseTimeChannelI");
+          std::cout << "Ch" << i << " Input Rise Time: " << value*8 << " ns" << std::endl;
+          CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x105C+i*0x100,&value),"ReadTrapRiseTimeChannelI");
+          std::cout << "Ch" << i << " Trap Rise Time: " << value*8 << " ns" << std::endl;
+          CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x1060+i*0x100,&value),"ReadTrapFlatTopChannelI");
+          std::cout << "Ch" << i << " Trap Flat Top: " << value*8 << " ns" << std::endl;
+          CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x1064+i*0x100,&value),"ReadPeakingTimeChannelI");
+          std::cout << "Ch" << i << " Peaking Time: " << value*8 << " ns" << std::endl;
+          CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x1068+i*0x100,&value),"ReadDecayTimeChannelI");
+          std::cout << "Ch" << i << " Decay Time: " << value*8/1000 << " microseconds" << std::endl;
+          CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x106C+i*0x100,&value),"ReadTriggerThresholdChannelI");
+          std::cout << "Ch" << i << " Trig Threshold: " << value << " LSB (threshold in mV = {LSB}*Vpp/ADC_Nbits)" << std::endl;
+          CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x1070+i*0x100,&value),"ReadRiseTimeValidationWindowChannelI");
+          std::cout << "Ch" << i << " Rise Time Validation Window: " << value*8 << " ns" << std::endl;
+          CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x1074+i*0x100,&value),"ReadTriggerHoldOffChannelI");
+          std::cout << "Ch" << i << " Trigger Hold-Off: " << value*8 << " ns" << std::endl;
+          CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x1078+i*0x100,&value),"ReadPeakHoldOffChannelI");
+          std::cout << "Ch" << i << " Peak Hold-Off: " << value*8 << " ns" << std::endl;
+          CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x1080+i*0x100,&value),"ReadDPPAlgControlChannelI");
+          std::cout << "Ch" << i << " DPPAlgControl: 0x" << std::hex << value << std::dec << std::endl;
+          std::cout << "    Trapezoid Rescaling: " << ExtractBits(value,6,0) << std::endl;
+          std::cout << "    Decimation: " << ExtractBits(value,2,8) << std::endl;
+          std::cout << "    Decimation Gain: " << ExtractBits(value,2,10) << std::endl;
+          std::cout << "    Peak Mean: " << ExtractBits(value,2,12) << std::endl;
+          std::cout << "    Invert Input: " << ExtractBits(value,1,16) << std::endl;
+          std::cout << "    Trigger Mode: " << ExtractBits(value,2,18) << std::endl;
+          std::cout << "    Baseline averaging window: " << ExtractBits(value,3,20) << std::endl;
+          std::cout << "    Disable Self Trigger: " << ExtractBits(value,1,24) << std::endl;
+          std::cout << "    Enable Roll-over: " << ExtractBits(value,1,26) << std::endl;
+          std::cout << "    Enable Pile-up: " << ExtractBits(value,1,27) << std::endl;
+          CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x1084+i*0x100,&value),"ReadShapedTrigWidthChannelI");
+          std::cout << "Ch" << i << " Shaped Trig Width: " << value << std::endl;
+        }
+    }
+
+
   // Start acquisition
   uint32_t BufferSize;
   CheckErrorCode(CAEN_DGTZ_SWStartAcquisition(handle),"SWStartAcquisition");
 
-  for (int i_evt = 0; i_evt<100; i_evt++)
+  for (int i_evt = 0; i_evt<10; i_evt++)
     {
       CheckErrorCode(CAEN_DGTZ_ReadData(handle, CAEN_DGTZ_SLAVE_TERMINATED_READOUT_MBLT, buffer, &BufferSize),"ReadData");
       if (BufferSize == 0) { i_evt--; continue; }
@@ -228,7 +312,7 @@ int main(int /*argc*/, char ** /*argv*/)
 
           for (uint32_t ev = 0; ev < NumEvents[ch]; ev++) {
               if (Events[ch][ev].Energy > 0 && Events[ch][ev].Energy < 32768)
-                  std::cout << "Channel " << ch << ", Event " << ev << ": " << Events[ch][ev].Energy << std::endl;
+                std::cout << "Channel " << ch << ", Event " << ev << ": " << Events[ch][ev].Energy << std::endl;
             }
         }
     }
@@ -239,6 +323,6 @@ int main(int /*argc*/, char ** /*argv*/)
   //CheckErrorCode(CAEN_DGTZ_FreeDPPWaveforms(handle, Waveform),"FreeDPPWaveforms");
   CheckErrorCode(CAEN_DGTZ_CloseDigitizer(handle),"CloseDigitizer");
 
-  
+
   return 0;
 }
