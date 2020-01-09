@@ -13,4 +13,4 @@ QMAKE_CXXFLAGS +=
 INCLUDEPATH += $$system(${ROOTSYS}/bin/root-config --incdir)
 LIBS += $$system(${ROOTSYS}/bin/root-config --glibs)
 
-HEADERS +=
+HEADERS += date.h
