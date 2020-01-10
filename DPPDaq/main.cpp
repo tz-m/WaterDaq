@@ -8,8 +8,10 @@
 #include <string>
 #include <sstream>
 #include <iostream>
+#include <iomanip>
 #include <bitset>
 #include <csignal>
+#include <algorithm>
 
 #include "date.h"
 
@@ -147,9 +149,6 @@ std::string AsBinary(uint32_t value)
       ss << ExtractBits(value,1,b-1);
     }
   return ss.str();
-
-  // convert the number to (std::string) binary representation
-  //return std::bitset<bits_needed>(value).to_string();
 }
 
 TVectorD MakeTimeVec(std::chrono::system_clock::time_point tp)
@@ -168,10 +167,55 @@ TVectorD MakeTimeVec(std::chrono::system_clock::time_point tp)
   return timevec;
 }
 
-int main(int /*argc*/, char ** /*argv*/)
+std::string MakeTimeString()
 {
+  auto tp = std::chrono::system_clock::now();
+  auto dp = date::floor<date::days>(tp);
+  auto ymd = date::year_month_day{dp};
+  auto time = date::make_time(std::chrono::duration_cast<std::chrono::milliseconds>(tp-dp));
+  std::stringstream s;
+  s << std::setfill('0') << std::setw(4) << (int)ymd.year();
+  s << std::setfill('0') << std::setw(2) << (unsigned)ymd.month();
+  s << std::setfill('0') << std::setw(2) << (unsigned)ymd.day();
+  s << "_";
+  s << std::setfill('0') << std::setw(2) << time.hours().count();
+  s << std::setfill('0') << std::setw(2) << time.minutes().count();
+  s << std::setfill('0') << std::setw(2) << time.seconds().count();
+  return s.str();
+}
+
+char* getCmdOption(char ** begin, char ** end, const std::string & option)
+{
+    char ** itr = std::find(begin, end, option);
+    if (itr != end && ++itr != end)
+    {
+        return *itr;
+    }
+    return 0;
+}
+
+bool cmdOptionExists(char** begin, char** end, const std::string& option)
+{
+    return std::find(begin, end, option) != end;
+}
+
+int main(int argc, char ** argv)
+{
+  long int count_events = -1;
+  long int count_seconds = -1;
+  if (cmdOptionExists(argv,argv+argc,"-t"))
+    {
+      // time the run
+      count_seconds = atol(getCmdOption(argv,argv+argc,"-t"));
+    }
+  if (cmdOptionExists(argv,argv+argc,"-n"))
+    {
+      // count events
+      count_events = atol(getCmdOption(argv,argv+argc,"-n"));
+    }
+
+
   int handle;
-  //CAEN_DGTZ_ErrorCode ret;
 
   //buffers to store data
   char *buffer = NULL;
@@ -223,7 +267,7 @@ int main(int /*argc*/, char ** /*argv*/)
       DPPParams.twwdt[ch] = 312;// rise time validation window
       MoreChanParams.InputDynamicRange[ch] = 0;
       MoreChanParams.PreTriggerSize[ch] = 1000;
-      MoreChanParams.ChannelDCOffset[ch] = (1-0.2)*0xFFFF;// use formulat (1 - percent_offset)*0xFFFF where percent_offset is the place you want the baseline within the full range, e.g. 0.2 for 20%
+      MoreChanParams.ChannelDCOffset[ch] = (1-0.2)*0xFFFF;// use formula (1 - percent_offset)*0xFFFF where percent_offset is the place you want the baseline within the full range, e.g. 0.2 for 20%
     }
 
   MoreChanParams.AutoDataFlush = 1;
@@ -467,7 +511,10 @@ int main(int /*argc*/, char ** /*argv*/)
       std::cout << "Finished Calibrating ADC Channel " << ch << std::endl;
     }
 
-  TFile * fout = TFile::Open("testfile.root","RECREATE");
+  std::stringstream filename;
+  filename << "DPPDaq_" << MakeTimeString() << ".root";
+  std::cout << filename.str() << std::endl;
+  TFile * fout = TFile::Open(filename.str().c_str(),"RECREATE");
   TH1I * h_ch0 = new TH1I("h_ch0",";ADC Channel;",16384,0,16384);
   TH1I * h_ch1 = new TH1I("h_ch1",";ADC Channel;",16384,0,16384);
 
@@ -504,10 +551,9 @@ int main(int /*argc*/, char ** /*argv*/)
         }
       ++i_evt;
 
-      //NUMBER//if (i_evt > 100) break;
-      //TIME//auto now = std::chrono::system_clock::now();
-      //TIME//if (std::chrono::duration_cast<std::chrono::seconds>(now-start).count() > 10) break;
-      //INDEFINITE//do nothing, comment the NUMBER and TIME options to wait for the SIGINT
+      if (count_events > 0 && i_evt > count_events) break;
+      auto now_tp = std::chrono::system_clock::now();
+      if (count_seconds > 0 && std::chrono::duration_cast<std::chrono::seconds>(now_tp-start_tp).count() > count_seconds) break;
     }
 
   auto end_tp = std::chrono::system_clock::now();
