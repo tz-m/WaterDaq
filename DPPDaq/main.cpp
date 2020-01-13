@@ -4,6 +4,11 @@
 #include "TFile.h"
 #include "TH1.h"
 #include "TVectorD.h"
+#include "TCanvas.h"
+#include "TApplication.h"
+#include "TPad.h"
+#include "TROOT.h"
+#include "TGraph.h"
 
 #include <string>
 #include <sstream>
@@ -12,6 +17,9 @@
 #include <bitset>
 #include <csignal>
 #include <algorithm>
+#include <fstream>
+#include <unordered_map>
+#include <memory>
 
 #include "date.h"
 
@@ -186,23 +194,26 @@ std::string MakeTimeString()
 
 char* getCmdOption(char ** begin, char ** end, const std::string & option)
 {
-    char ** itr = std::find(begin, end, option);
-    if (itr != end && ++itr != end)
+  char ** itr = std::find(begin, end, option);
+  if (itr != end && ++itr != end)
     {
-        return *itr;
+      return *itr;
     }
-    return 0;
+  return 0;
 }
 
 bool cmdOptionExists(char** begin, char** end, const std::string& option)
 {
-    return std::find(begin, end, option) != end;
+  return std::find(begin, end, option) != end;
 }
 
 int main(int argc, char ** argv)
 {
+  TApplication tapp("tapp",&argc,argv);
+
   long int count_events = -1;
   long int count_seconds = -1;
+  bool disp = false;
   if (cmdOptionExists(argv,argv+argc,"-t"))
     {
       // time the run
@@ -213,14 +224,21 @@ int main(int argc, char ** argv)
       // count events
       count_events = atol(getCmdOption(argv,argv+argc,"-n"));
     }
+  if (cmdOptionExists(argv,argv+argc,"-disp")) disp = true;
 
+  std::string thisTimeString = MakeTimeString();
+
+  std::stringstream configfilename;
+  configfilename << "config_DPPDaq_" << thisTimeString << ".txt";
+  std::cout << "Config filename " << configfilename.str() << std::endl;
+  std::ofstream fs(configfilename.str());
 
   int handle;
 
   //buffers to store data
   char *buffer = NULL;
   CAEN_DGTZ_DPP_PHA_Event_t *Events[8];
-  //CAEN_DGTZ_DPP_PHA_Waveforms_t *Waveform=NULL;
+  CAEN_DGTZ_DPP_PHA_Waveforms_t *Waveform=NULL;
 
   // digitizer configuration parameters
   CAEN_DGTZ_DPP_PHA_Params_t DPPParams;
@@ -240,6 +258,7 @@ int main(int argc, char ** argv)
 
   //acquisition parameters
   Params.AcqMode = CAEN_DGTZ_DPP_ACQ_MODE_List;
+  if (disp) Params.AcqMode = CAEN_DGTZ_DPP_ACQ_MODE_Mixed;
   Params.RecordLength = 10000;// Number of samples at 2ns per sample
   Params.ChannelMask = (1<<0) + (1<<1) + (0<<2) + (0<<3) + (0<<4) + (0<<5) + (0<<6) + (0<<7); // {1=enable, 0=disable} << =left.bit.shift {channel number}
   Params.EventAggr = 0;//0 = automatic
@@ -273,13 +292,13 @@ int main(int argc, char ** argv)
   MoreChanParams.AutoDataFlush = 1;
   MoreChanParams.SaveDecimated = 0;
   MoreChanParams.TrigPropagation = 1;
-  MoreChanParams.DualTrace = 0;
-  MoreChanParams.AnProbe1 = 0;
-  MoreChanParams.AnProbe2 = 0;
-  MoreChanParams.WaveformRecording = 0;
+  MoreChanParams.DualTrace = (disp)?1:0;
+  MoreChanParams.AnProbe1 = (disp)?0:0;// 0=input, 1=RC-CR, 2=RC-CR2, 3=trapezoid
+  MoreChanParams.AnProbe2 = (disp)?2:0;// 0=input, 1=threshold, 2=trap-base, 3=baseline
+  MoreChanParams.WaveformRecording = (disp)?1:0;
   MoreChanParams.EnableExtras2 = 0;
-  MoreChanParams.DigVirtProbe1 = 0;
-  MoreChanParams.DigVirtProbe2 = 0;
+  MoreChanParams.DigVirtProbe1 = (disp)?0:0;// 0=peaking, 3=pileup, 5=trig valid window, 7=trig holdoff, 8=trig validation, 10=zero cross window, 11=ext trig, 12=busy (other options available)
+  MoreChanParams.DigVirtProbe2 = 0;// 0=Trigger
   std::bitset<32> boardcfg(0);
   boardcfg |= MoreChanParams.AutoDataFlush << 0;
   boardcfg |= MoreChanParams.SaveDecimated << 1;
@@ -295,26 +314,26 @@ int main(int argc, char ** argv)
   boardcfg |= 1 << 19;// required
   boardcfg |= MoreChanParams.DigVirtProbe1 << 20;
   boardcfg |= MoreChanParams.DigVirtProbe2 << 26;
-  std::cout << "Board Configuration: " << boardcfg << " (" << std::hex << boardcfg.to_ulong() << std::dec << ")" << std::endl;
+  fs << "Board Configuration: " << boardcfg << " (" << std::hex << boardcfg.to_ulong() << std::dec << ")" << std::endl;
 
 
   CheckErrorCode(CAEN_DGTZ_OpenDigitizer(Params.LinkType,0,0,Params.VMEBaseAddress,&handle),"OpenDigitizer");
 
   CAEN_DGTZ_BoardInfo_t BoardInfo;
   CheckErrorCode(CAEN_DGTZ_GetInfo(handle,&BoardInfo),"GetInfo");
-  std::cout << "  ModelName: " << BoardInfo.ModelName << std::endl;
-  std::cout << "  Model: " << BoardInfo.Model << std::endl;
-  std::cout << "  Channels: " << BoardInfo.Channels << std::endl;
-  std::cout << "  FormFactor: " << BoardInfo.FormFactor << std::endl;
-  std::cout << "  FamilyCode: " << BoardInfo.FamilyCode << std::endl;
-  std::cout << "  ROC_FirmwareRel: " << BoardInfo.ROC_FirmwareRel << std::endl;
-  std::cout << "  AMC_FirmwareRel: " << BoardInfo.AMC_FirmwareRel << std::endl;
-  std::cout << "  SerialNumber: " << BoardInfo.SerialNumber << std::endl;
-  std::cout << "  PCB_Revision: " << BoardInfo.PCB_Revision << std::endl;
-  std::cout << "  ADC_NBits: " << BoardInfo.ADC_NBits << std::endl;
-  std::cout << "  CommHandle: " << BoardInfo.CommHandle << std::endl;
-  std::cout << "  VMEHandle: " << BoardInfo.VMEHandle << std::endl;
-  std::cout << "  License: " << BoardInfo.License << std::endl;
+  fs << "  ModelName: " << BoardInfo.ModelName << std::endl;
+  fs << "  Model: " << BoardInfo.Model << std::endl;
+  fs << "  Channels: " << BoardInfo.Channels << std::endl;
+  fs << "  FormFactor: " << BoardInfo.FormFactor << std::endl;
+  fs << "  FamilyCode: " << BoardInfo.FamilyCode << std::endl;
+  fs << "  ROC_FirmwareRel: " << BoardInfo.ROC_FirmwareRel << std::endl;
+  fs << "  AMC_FirmwareRel: " << BoardInfo.AMC_FirmwareRel << std::endl;
+  fs << "  SerialNumber: " << BoardInfo.SerialNumber << std::endl;
+  fs << "  PCB_Revision: " << BoardInfo.PCB_Revision << std::endl;
+  fs << "  ADC_NBits: " << BoardInfo.ADC_NBits << std::endl;
+  fs << "  CommHandle: " << BoardInfo.CommHandle << std::endl;
+  fs << "  VMEHandle: " << BoardInfo.VMEHandle << std::endl;
+  fs << "  License: " << BoardInfo.License << std::endl;
 
   uint32_t value;
 
@@ -356,6 +375,11 @@ int main(int argc, char ** argv)
           value |= 1UL << 24;
           CheckErrorCode(CAEN_DGTZ_WriteRegister(handle, 0x1080+i*0x100, value),"WriteRegister(0x1080)");
 
+          // Enable BLR optimization
+          CheckErrorCode(CAEN_DGTZ_ReadRegister(handle, 0x10A0+i*0x100, &value),"ReadDPPAlg2");
+          value |= 1UL << 29;
+          CheckErrorCode(CAEN_DGTZ_WriteRegister(handle, 0x10A0+i*0x100, value),"WriteDPPAlg2");
+
           // set input dynamic range
           CheckErrorCode(CAEN_DGTZ_WriteRegister(handle, 0x1028+i*0x100, MoreChanParams.InputDynamicRange[i]),"SetInputDynamicRange");
         }
@@ -365,135 +389,135 @@ int main(int argc, char ** argv)
   uint32_t AllocatedSize;
   CheckErrorCode(CAEN_DGTZ_MallocReadoutBuffer(handle, &buffer, &AllocatedSize),"MallocReadoutBuffer");
   CheckErrorCode(CAEN_DGTZ_MallocDPPEvents(handle, (void**)Events, &AllocatedSize),"MallocDPPEvents");
-  //CheckErrorCode(CAEN_DGTZ_MallocDPPWaveforms(handle, &Waveform, &AllocatedSize),"MallocDPPWaveforms");
+  CheckErrorCode(CAEN_DGTZ_MallocDPPWaveforms(handle, (void**)&Waveform, &AllocatedSize),"MallocDPPWaveforms");
 
 
   /*Check All Parameters*/
 
   //Global
   CheckErrorCode(CAEN_DGTZ_GetRecordLength(handle,&value),"GetRecordLength");
-  std::cout << "GetRecordLength: " << value << std::endl;
+  fs << "GetRecordLength: " << value << std::endl;
   CheckErrorCode(CAEN_DGTZ_GetNumEventsPerAggregate(handle,&value),"GetNumEventsPerAggregate");
-  std::cout << "GetNumEventsPerAggregate: " << value << std::endl;
+  fs << "GetNumEventsPerAggregate: " << value << std::endl;
 
   //Channel
   for (int i = 0; i < 8; i++)
     {
       if (Params.ChannelMask & (1<<i)) {
           CheckErrorCode(CAEN_DGTZ_GetRecordLength(handle,&value,i),"GetRecordLengthChannelI");
-          std::cout << "Ch" << i << " Record Length; " << value*2 << " ns" << std::endl;
+          fs << "Ch" << i << " Record Length; " << value*2 << " ns" << std::endl;
           CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x1028+i*0x100,&value),"ReadChannelIInputDynamicRange");
-          std::cout << "Ch" << i << " Input Dynamic Range: " << ((value==0)?"2 Vpp":((value==1)?"0.5 Vpp":"Invalid")) << std::endl;
+          fs << "Ch" << i << " Input Dynamic Range: " << ((value==0)?"2 Vpp":((value==1)?"0.5 Vpp":"Invalid")) << std::endl;
           CheckErrorCode(CAEN_DGTZ_GetNumEventsPerAggregate(handle,&value,i),"GetNumEventsPerAggregateChannelI");
-          std::cout << "Ch" << i << " NumEventsPerAggregate: " << value << std::endl;
+          fs << "Ch" << i << " NumEventsPerAggregate: " << value << std::endl;
           CheckErrorCode(CAEN_DGTZ_GetDPPPreTriggerSize(handle,i,&value),"GetDPPPreTriggerSize");
-          std::cout << "Ch" << i << " PreTrigger: " << value*2 << " ns" << std::endl;
+          fs << "Ch" << i << " PreTrigger: " << value*2 << " ns" << std::endl;
           CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x104C+i*0x100,&value),"ReadFineGainChannelI");
-          std::cout << "Ch" << i << " Fine Gain: " << value << " (if =250, fg is probably 1.0)" << std::endl;
+          fs << "Ch" << i << " Fine Gain: " << value << " (if =250, fg is probably 1.0)" << std::endl;
           CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x1054+i*0x100,&value),"ReadRC-CR2SmootingFactorChannelI");
-          std::cout << "Ch" << i << " RC-CR2 Smoothing Factor: " << std::hex << value << std::dec << std::endl;
+          fs << "Ch" << i << " RC-CR2 Smoothing Factor: " << std::hex << value << std::dec << std::endl;
           CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x1058+i*0x100,&value),"ReadInputRiseTimeChannelI");
-          std::cout << "Ch" << i << " Input Rise Time: " << value*8 << " ns" << std::endl;
+          fs << "Ch" << i << " Input Rise Time: " << value*8 << " ns" << std::endl;
           CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x105C+i*0x100,&value),"ReadTrapRiseTimeChannelI");
-          std::cout << "Ch" << i << " Trap Rise Time: " << value*8 << " ns" << std::endl;
+          fs << "Ch" << i << " Trap Rise Time: " << value*8 << " ns" << std::endl;
           CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x1060+i*0x100,&value),"ReadTrapFlatTopChannelI");
-          std::cout << "Ch" << i << " Trap Flat Top: " << value*8 << " ns" << std::endl;
+          fs << "Ch" << i << " Trap Flat Top: " << value*8 << " ns" << std::endl;
           CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x1064+i*0x100,&value),"ReadPeakingTimeChannelI");
-          std::cout << "Ch" << i << " Peaking Time: " << value*8 << " ns" << std::endl;
+          fs << "Ch" << i << " Peaking Time: " << value*8 << " ns" << std::endl;
           CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x1068+i*0x100,&value),"ReadDecayTimeChannelI");
-          std::cout << "Ch" << i << " Decay Time: " << value*8/1000 << " microseconds" << std::endl;
+          fs << "Ch" << i << " Decay Time: " << value*8/1000 << " microseconds" << std::endl;
           CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x106C+i*0x100,&value),"ReadTriggerThresholdChannelI");
-          std::cout << "Ch" << i << " Trig Threshold: " << value << " LSB (threshold in mV = {LSB}*Vpp/ADC_Nbits)" << std::endl;
+          fs << "Ch" << i << " Trig Threshold: " << value << " LSB (threshold in mV = {LSB}*Vpp/ADC_Nbits)" << std::endl;
           CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x1070+i*0x100,&value),"ReadRiseTimeValidationWindowChannelI");
-          std::cout << "Ch" << i << " Rise Time Validation Window: " << value*8 << " ns" << std::endl;
+          fs << "Ch" << i << " Rise Time Validation Window: " << value*8 << " ns" << std::endl;
           CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x1074+i*0x100,&value),"ReadTriggerHoldOffChannelI");
-          std::cout << "Ch" << i << " Trigger Hold-Off: " << value*8 << " ns" << std::endl;
+          fs << "Ch" << i << " Trigger Hold-Off: " << value*8 << " ns" << std::endl;
           CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x1078+i*0x100,&value),"ReadPeakHoldOffChannelI");
-          std::cout << "Ch" << i << " Peak Hold-Off: " << value*8 << " ns" << std::endl;
+          fs << "Ch" << i << " Peak Hold-Off: " << value*8 << " ns" << std::endl;
           CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x1080+i*0x100,&value),"ReadDPPAlgControlChannelI");
-          std::cout << "Ch" << i << " DPPAlgControl: 0x" << std::hex << value << std::dec << "  " << AsBinary(value) << std::endl;
-          std::cout << "    Trapezoid Rescaling: " << ExtractBits(value,6,0) << std::endl;
-          std::cout << "    Decimation: " << AsBinary(ExtractBits(value,2,8)) << std::endl;
-          std::cout << "    Decimation Gain: " << AsBinary(ExtractBits(value,2,10)) << std::endl;
-          std::cout << "    Peak Mean: " << AsBinary(ExtractBits(value,2,12)) << std::endl;
-          std::cout << "    Invert Input: " << ExtractBits(value,1,16) << std::endl;
-          std::cout << "    Trigger Mode: " << AsBinary(ExtractBits(value,2,18)) << std::endl;
-          std::cout << "    Baseline averaging window: " << AsBinary(ExtractBits(value,3,20)) << std::endl;
-          std::cout << "    Disable Self Trigger: " << ExtractBits(value,1,24) << std::endl;
-          std::cout << "    Enable Roll-over: " << ExtractBits(value,1,26) << std::endl;
-          std::cout << "    Enable Pile-up: " << ExtractBits(value,1,27) << std::endl;
+          fs << "Ch" << i << " DPPAlgControl: 0x" << std::hex << value << std::dec << "  " << AsBinary(value) << std::endl;
+          fs << "    Trapezoid Rescaling: " << ExtractBits(value,6,0) << std::endl;
+          fs << "    Decimation: " << AsBinary(ExtractBits(value,2,8)) << std::endl;
+          fs << "    Decimation Gain: " << AsBinary(ExtractBits(value,2,10)) << std::endl;
+          fs << "    Peak Mean: " << AsBinary(ExtractBits(value,2,12)) << std::endl;
+          fs << "    Invert Input: " << ExtractBits(value,1,16) << std::endl;
+          fs << "    Trigger Mode: " << AsBinary(ExtractBits(value,2,18)) << std::endl;
+          fs << "    Baseline averaging window: " << AsBinary(ExtractBits(value,3,20)) << std::endl;
+          fs << "    Disable Self Trigger: " << ExtractBits(value,1,24) << std::endl;
+          fs << "    Enable Roll-over: " << ExtractBits(value,1,26) << std::endl;
+          fs << "    Enable Pile-up: " << ExtractBits(value,1,27) << std::endl;
           CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x1084+i*0x100,&value),"ReadShapedTrigWidthChannelI");
-          std::cout << "Ch" << i << " Shaped Trig Width: " << value << std::endl;
+          fs << "Ch" << i << " Shaped Trig Width: " << value << std::endl;
           CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x1088+i*0x100,&value),"ReadChannelIStatus");
-          std::cout << "Ch" << i << " Status: " << "SPI_busy=" << ExtractBits(value,1,2) << " ADC_calib_done=" << ExtractBits(value,1,3) << " ADC_power_down=" << ExtractBits(value,1,8) << std::endl;
+          fs << "Ch" << i << " Status: " << "SPI_busy=" << ExtractBits(value,1,2) << " ADC_calib_done=" << ExtractBits(value,1,3) << " ADC_power_down=" << ExtractBits(value,1,8) << std::endl;
           CheckErrorCode(CAEN_DGTZ_GetChannelDCOffset(handle,i,&value),"GetChannelDCOffset");
-          std::cout << "Ch" << i << " DC Offset: " << value << std::endl;
+          fs << "Ch" << i << " DC Offset: " << value << std::endl;
           CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x10A0+i*0x100,&value),"ReadDPPAlgControl2ChannelI");
-          std::cout << "Ch" << i << " DPPAlgControl2: 0x" << std::hex << value << std::dec << "  " << AsBinary(value) << std::endl;
-          std::cout << "    Local Shaped Trigger Mode: " << AsBinary(ExtractBits(value,2,0)) << std::endl;
-          std::cout << "    Enable Local Shaped Trigger: " << ExtractBits(value,1,2) << std::endl;
-          std::cout << "    Local Trigger Validation Mode: " << AsBinary(ExtractBits(value,2,4)) << std::endl;
-          std::cout << "    Enable Local Trigger Validation: " << ExtractBits(value,1,6) << std::endl;
-          std::cout << "    Extras2 options: " << AsBinary(ExtractBits(value,3,8)) << std::endl;
-          std::cout << "    Veto Source: " << AsBinary(ExtractBits(value,2,14)) << std::endl;
-          std::cout << "    Trigger Counter Rate Step: " << AsBinary(ExtractBits(value,2,16)) << std::endl;
-          std::cout << "    Baseline Calculation Always: " << AsBinary(ExtractBits(value,1,18)) << std::endl;
-          std::cout << "    Tag corr/uncorr: " << ExtractBits(value,1,19) << std::endl;
-          std::cout << "    BLR Optimization: " << ExtractBits(value,1,29) << std::endl;
+          fs << "Ch" << i << " DPPAlgControl2: 0x" << std::hex << value << std::dec << "  " << AsBinary(value) << std::endl;
+          fs << "    Local Shaped Trigger Mode: " << AsBinary(ExtractBits(value,2,0)) << std::endl;
+          fs << "    Enable Local Shaped Trigger: " << ExtractBits(value,1,2) << std::endl;
+          fs << "    Local Trigger Validation Mode: " << AsBinary(ExtractBits(value,2,4)) << std::endl;
+          fs << "    Enable Local Trigger Validation: " << ExtractBits(value,1,6) << std::endl;
+          fs << "    Extras2 options: " << AsBinary(ExtractBits(value,3,8)) << std::endl;
+          fs << "    Veto Source: " << AsBinary(ExtractBits(value,2,14)) << std::endl;
+          fs << "    Trigger Counter Rate Step: " << AsBinary(ExtractBits(value,2,16)) << std::endl;
+          fs << "    Baseline Calculation Always: " << AsBinary(ExtractBits(value,1,18)) << std::endl;
+          fs << "    Tag corr/uncorr: " << ExtractBits(value,1,19) << std::endl;
+          fs << "    BLR Optimization: " << ExtractBits(value,1,29) << std::endl;
           CheckErrorCode(CAEN_DGTZ_ReadTemperature(handle,i,&value),"ReadTemperature");
-          std::cout << "Ch" << i << " Temperature: " << value << " degC" << std::endl;
+          fs << "Ch" << i << " Temperature: " << value << " degC" << std::endl;
           CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x10D4+i*0x100,&value),"ReadVetoWidthChannelI");
-          std::cout << "Ch" << i << " Veto Width: " << ExtractBits(value,16,0) << " in steps of " << AsBinary(ExtractBits(value,2,16)) << std::endl;
+          fs << "Ch" << i << " Veto Width: " << ExtractBits(value,16,0) << " in steps of " << AsBinary(ExtractBits(value,2,16)) << std::endl;
         }
     }
   CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x8000,&value),"ReadBoardConfiguration");
-  std::cout << "Read board configuration " << AsBinary(value) << std::endl;
-  std::cout << "   AutoDataFlush=" << ExtractBits(value,1,0) << std::endl;
-  std::cout << "   SaveDecimated=" << ExtractBits(value,1,1) << std::endl;
-  std::cout << "   TrigPropagation=" << ExtractBits(value,1,2) << std::endl;
-  std::cout << "   DualTrace=" << ExtractBits(value,1,11) << std::endl;
-  std::cout << "   AnProbe1=" << ExtractBits(value,2,12) << std::endl;
-  std::cout << "   AnProbe2=" << ExtractBits(value,2,14) << std::endl;
-  std::cout << "   WaveformRecording=" << ExtractBits(value,1,16) << std::endl;
-  std::cout << "   EnableExtras2=" << ExtractBits(value,1,17) << std::endl;
-  std::cout << "   DigVirtProbe1=" << ExtractBits(value,4,20) << std::endl;
-  std::cout << "   DigVirtProbe2=" << ExtractBits(value,3,26) << std::endl;
+  fs << "Read board configuration " << AsBinary(value) << std::endl;
+  fs << "   AutoDataFlush=" << ExtractBits(value,1,0) << std::endl;
+  fs << "   SaveDecimated=" << ExtractBits(value,1,1) << std::endl;
+  fs << "   TrigPropagation=" << ExtractBits(value,1,2) << std::endl;
+  fs << "   DualTrace=" << ExtractBits(value,1,11) << std::endl;
+  fs << "   AnProbe1=" << ExtractBits(value,2,12) << std::endl;
+  fs << "   AnProbe2=" << ExtractBits(value,2,14) << std::endl;
+  fs << "   WaveformRecording=" << ExtractBits(value,1,16) << std::endl;
+  fs << "   EnableExtras2=" << ExtractBits(value,1,17) << std::endl;
+  fs << "   DigVirtProbe1=" << ExtractBits(value,4,20) << std::endl;
+  fs << "   DigVirtProbe2=" << ExtractBits(value,3,26) << std::endl;
   CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x800C,&value),"ReadAggregateOrganisation");
-  std::cout << "Aggregate Organisation: 0x" << std::hex << value << std::dec << std::endl;
+  fs << "Aggregate Organisation: 0x" << std::hex << value << std::dec << std::endl;
   CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x8100,&value),"ReadAcquisitionControl");
-  std::cout << "Acquisition Control: 0x" << std::hex << value << std::dec << std::endl;
-  std::cout << "    Start/Stop Mode: " << AsBinary(ExtractBits(value,2,0)) << std::endl;
-  std::cout << "    Acquisition Start/Arm: " << ExtractBits(value,1,2) << std::endl;
-  std::cout << "    PLL Reference Clock Source: " << ExtractBits(value,1,6) << std::endl;
+  fs << "Acquisition Control: 0x" << std::hex << value << std::dec << std::endl;
+  fs << "    Start/Stop Mode: " << AsBinary(ExtractBits(value,2,0)) << std::endl;
+  fs << "    Acquisition Start/Arm: " << ExtractBits(value,1,2) << std::endl;
+  fs << "    PLL Reference Clock Source: " << ExtractBits(value,1,6) << std::endl;
   CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x8104,&value),"CheckAcquisitionStatus");
-  std::cout << "Acquisition Status: " << AsBinary(value) << std::endl;
+  fs << "Acquisition Status: " << AsBinary(value) << std::endl;
   CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x810C,&value),"ReadGlobalTriggerMask");
-  std::cout << "Global Trigger Mask: 0x" << std::hex << value << std::dec << " (" << AsBinary(value) << ")" << std::endl;
-  std::cout << "    Couples Contribute To Global Trigger: " << AsBinary(ExtractBits(value,4,0)) << std::endl;
-  std::cout << "    Majority Coincidence Window: " << ExtractBits(value,4,20)*8 << " ns" << std::endl;
-  std::cout << "    Majority Level: " << ExtractBits(value,3,24) << std::endl;
-  std::cout << "    External Trigger Enabled: " << ExtractBits(value,1,30) << std::endl;
-  std::cout << "    Software Trigger Enabled: " << ExtractBits(value,1,31) << std::endl;
+  fs << "Global Trigger Mask: 0x" << std::hex << value << std::dec << " (" << AsBinary(value) << ")" << std::endl;
+  fs << "    Couples Contribute To Global Trigger: " << AsBinary(ExtractBits(value,4,0)) << std::endl;
+  fs << "    Majority Coincidence Window: " << ExtractBits(value,4,20)*8 << " ns" << std::endl;
+  fs << "    Majority Level: " << ExtractBits(value,3,24) << std::endl;
+  fs << "    External Trigger Enabled: " << ExtractBits(value,1,30) << std::endl;
+  fs << "    Software Trigger Enabled: " << ExtractBits(value,1,31) << std::endl;
   CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x811C,&value),"ReadFrontPanelIOControl");
-  std::cout << "Front Panel I/O Control: 0x" << std::hex << value << std::dec << std::endl;
-  std::cout << "    LEMO I/O Level: " << (ExtractBits(value,1,0)==0?"NIM":(ExtractBits(value,1,0)==1?"TTL":"Unknown")) << std::endl;
-  std::cout << "    TRG-IN Control: " << ExtractBits(value,1,10) << std::endl;
-  std::cout << "    TRG-IN to Mezzanine: " << ExtractBits(value,1,11) << std::endl;
-  std::cout << "    Force GPO: " << ExtractBits(value,1,14) << std::endl;
-  std::cout << "    GPO Mode: " << ExtractBits(value,1,15) << std::endl;
-  std::cout << "    GPO Mode Selection: " << AsBinary(ExtractBits(value,2,16)) << std::endl;
-  std::cout << "    Motherboard Virtual Probe Selection to GPO: " << AsBinary(ExtractBits(value,2,18)) << std::endl;
+  fs << "Front Panel I/O Control: 0x" << std::hex << value << std::dec << std::endl;
+  fs << "    LEMO I/O Level: " << (ExtractBits(value,1,0)==0?"NIM":(ExtractBits(value,1,0)==1?"TTL":"Unknown")) << std::endl;
+  fs << "    TRG-IN Control: " << ExtractBits(value,1,10) << std::endl;
+  fs << "    TRG-IN to Mezzanine: " << ExtractBits(value,1,11) << std::endl;
+  fs << "    Force GPO: " << ExtractBits(value,1,14) << std::endl;
+  fs << "    GPO Mode: " << ExtractBits(value,1,15) << std::endl;
+  fs << "    GPO Mode Selection: " << AsBinary(ExtractBits(value,2,16)) << std::endl;
+  fs << "    Motherboard Virtual Probe Selection to GPO: " << AsBinary(ExtractBits(value,2,18)) << std::endl;
   CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x8120,&value),"ReadChannelEnableMask");
-  std::cout << "Channel Enable Mask: " << AsBinary(value) << std::endl;
+  fs << "Channel Enable Mask: " << AsBinary(value) << std::endl;
   CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x817C,&value),"ReadDisableExternalTrigger");
-  std::cout << "Disable External Trigger: " << value << std::endl;
+  fs << "Disable External Trigger: " << value << std::endl;
   CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x8180,&value),"ReadTriggerValidationMaskCouple0");
-  std::cout << "Trigger Validation Mask Couple 0: 0x" << std::hex << value << std::dec << " (" << AsBinary(value) << ")" << std::endl;
-  std::cout << "    Couples which participate in trigger generation: " << AsBinary(ExtractBits(value,8,0)) << std::endl;
-  std::cout << "    Operation Mask: " << AsBinary(ExtractBits(value,2,8)) << std::endl;
-  std::cout << "    Majority Level: " << ExtractBits(value,3,10) << std::endl;
-  std::cout << "    External Trigger: " << ExtractBits(value,1,30) << std::endl;
-  std::cout << "    Software Trigger: " << ExtractBits(value,1,31) << std::endl;
+  fs << "Trigger Validation Mask Couple 0: 0x" << std::hex << value << std::dec << " (" << AsBinary(value) << ")" << std::endl;
+  fs << "    Couples which participate in trigger generation: " << AsBinary(ExtractBits(value,8,0)) << std::endl;
+  fs << "    Operation Mask: " << AsBinary(ExtractBits(value,2,8)) << std::endl;
+  fs << "    Majority Level: " << ExtractBits(value,3,10) << std::endl;
+  fs << "    External Trigger: " << ExtractBits(value,1,30) << std::endl;
+  fs << "    Software Trigger: " << ExtractBits(value,1,31) << std::endl;
 
   // Calibrate ADCs
   for (int ch = 0; ch < 8; ch++)
@@ -508,12 +532,12 @@ int main(int argc, char ** argv)
       CheckErrorCode(CAEN_DGTZ_WriteRegister(handle,0x809C,1),"ADCCalibrate");
       CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x1088,&value),"CheckChannelIADCCalibrationStatus");
       while (!ExtractBits(value,1,3)) CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x1088,&value),"PollChannelIADCCalibrationStatus");
-      std::cout << "Finished Calibrating ADC Channel " << ch << std::endl;
     }
+  std::cout << "ADCs Calibrated..." << std::endl;
 
   std::stringstream filename;
-  filename << "DPPDaq_" << MakeTimeString() << ".root";
-  std::cout << filename.str() << std::endl;
+  filename << "DPPDaq_" << thisTimeString << ".root";
+  std::cout << "Output filename " << filename.str() << std::endl;
   TFile * fout = TFile::Open(filename.str().c_str(),"RECREATE");
   TH1I * h_ch0 = new TH1I("h_ch0",";ADC Channel;",16384,0,16384);
   TH1I * h_ch1 = new TH1I("h_ch1",";ADC Channel;",16384,0,16384);
@@ -527,25 +551,141 @@ int main(int argc, char ** argv)
 
   auto start_tp = std::chrono::system_clock::now();
   TVectorD starttimevec = MakeTimeVec(start_tp);
+  auto PrevRateTime = start_tp;
 
   int i_evt = 0;
+  int i_sec = 0;
+  std::unordered_map<int,int> chan_pulses;
+  std::unordered_map<int,int> trgCnt;
+  std::unordered_map<int,int> purCnt;
+  int Nb = 0;
+
+  std::unordered_map<int,TCanvas*> canv_wf_map;
+  std::unordered_map<int,TCanvas*> canv_hist_map;
+  for (int ch = 0; ch < 8; ch++)
+    {
+      if (!(Params.ChannelMask & (1<<ch))) continue;
+      canv_wf_map[ch] = new TCanvas(((std::string)"wf_ch"+std::to_string(ch)).c_str(),"",1600,900);
+      //canv_hist_map[ch] = new TCanvas(((std::string)"hist_ch"+std::to_string(ch)).c_str(),"",1600,900);
+    }
+
   while(keep_continue)
     {
       CheckErrorCode(CAEN_DGTZ_ReadData(handle, CAEN_DGTZ_SLAVE_TERMINATED_READOUT_MBLT, buffer, &BufferSize),"ReadData");
       if (BufferSize == 0) continue;
+      Nb += BufferSize;
       CheckErrorCode(CAEN_DGTZ_GetDPPEvents(handle, buffer, BufferSize, (void**)Events, NumEvents),"GetDPPEvents");
-      std::cout << "NumEvents " << NumEvents << "  i_evt " << i_evt << std::endl;
       for (int ch = 0; ch < 8; ch++)
         {
           if (!(Params.ChannelMask & (1<<ch))) continue;
 
-          for (uint32_t ev = 0; ev < NumEvents[ch]; ev++) {
+          for (uint32_t ev = 0; ev < NumEvents[ch]; ev++)
+            {
+              trgCnt[ch]++;
               uint32_t energy = Events[ch][ev].Energy;
               if (energy > 10 && energy < 32768)
                 {
-                  //std::cout << "Channel " << ch << ", Event " << ev << ": " << energy << std::endl;
                   if (ch==0) h_ch0->Fill(energy);
                   if (ch==1) h_ch1->Fill(energy);
+                  chan_pulses[ch]++;
+                }
+              else
+                {
+                  purCnt[ch]++;
+                }
+              if (disp && ev == 0 && energy > 10 && energy < 32768)
+                {
+                  int size;
+                  int *time_x;
+                  int16_t *WaveLine_an1; Int_t *WL_an1;
+                  int16_t *WaveLine_an2; Int_t *WL_an2;
+                  uint8_t *DigitalWaveLine_d1; Int_t *DWL_d1;
+                  uint8_t *DigitalWaveLine_d2; Int_t *DWL_d2;
+                  CheckErrorCode(CAEN_DGTZ_DecodeDPPWaveforms(handle, &Events[ch][ev], Waveform),"DecodeDPPWaveforms");
+
+                  // Use waveform data here...
+                  size = (int)(Waveform->Ns); // Number of samples
+
+                  time_x = (Int_t*)malloc(sizeof(Int_t)*size);
+                  WL_an1 = (Int_t*)malloc(sizeof(Int_t)*size);
+                  WL_an2 = (Int_t*)malloc(sizeof(Int_t)*size);
+                  DWL_d1 = (Int_t*)malloc(sizeof(Int_t)*size);
+                  DWL_d2 = (Int_t*)malloc(sizeof(Int_t)*size);
+
+                  WaveLine_an1 = Waveform->Trace1; // First trace (ANALOG_TRACE_1)
+                  WaveLine_an2 = Waveform->Trace2; // Second Trace ANALOG_TRACE_2 (if single trace mode, it is a sequence of zeroes)
+                  DigitalWaveLine_d1 = Waveform->DTrace1; // First Digital Trace (DIGITALPROBE1)
+                  DigitalWaveLine_d2 = Waveform->DTrace2; // Second Digital Trace (for DPP-PHA it is ALWAYS Trigger)
+
+                  for (int pt = 0; pt < size; ++pt)
+                    {
+                      time_x[pt] = pt*2;
+                      WL_an1[pt] = static_cast<Int_t>(WaveLine_an1[pt]);
+                      WL_an2[pt] = static_cast<Int_t>(WaveLine_an2[pt]);
+                      DWL_d1[pt] = static_cast<Int_t>(DigitalWaveLine_d1[pt]);
+                      DWL_d2[pt] = static_cast<Int_t>(DigitalWaveLine_d2[pt]);
+                    }
+
+                  canv_wf_map[ch]->cd();
+
+                  TGraph * an1 = new TGraph(size,time_x,WL_an1);
+                  an1->SetTitle(((std::string)"Channel"+std::to_string(ch)+";Time (ns);ADC Value").c_str());
+                  an1->SetLineColor(kBlack);
+                  an1->GetYaxis()->SetRangeUser(-8192,16384);
+                  TGraph * an2 = new TGraph(size,time_x,WL_an2);
+                  an2->SetTitle("");
+                  an2->SetLineColor(kRed);
+                  an2->GetXaxis()->SetLabelSize(0);
+                  an2->GetXaxis()->SetTickLength(0);
+                  an2->GetYaxis()->SetLabelSize(0);
+                  an2->GetYaxis()->SetTickLength(0);
+                  an2->GetYaxis()->SetRangeUser(-8192,16384);
+                  TGraph * d1 = new TGraph(size,time_x,DWL_d1);
+                  d1->SetTitle("");
+                  d1->SetLineColor(kBlue);
+                  d1->GetXaxis()->SetLabelSize(0);
+                  d1->GetXaxis()->SetTickLength(0);
+                  d1->GetYaxis()->SetLabelSize(0);
+                  d1->GetYaxis()->SetTickLength(0);
+                  d1->GetYaxis()->SetRangeUser(-1,3);
+                  TGraph * d2 = new TGraph(size,time_x,DWL_d2);
+                  d2->SetTitle("");
+                  d2->SetLineColor(kGreen);
+                  d2->GetXaxis()->SetLabelSize(0);
+                  d2->GetXaxis()->SetTickLength(0);
+                  d2->GetYaxis()->SetLabelSize(0);
+                  d2->GetYaxis()->SetTickLength(0);
+                  d2->GetYaxis()->SetRangeUser(-1,3);
+
+                  TPad * pad1 = new TPad("pad_an1","",0,0,1,1);
+                  TPad * pad2 = new TPad("pad_an2","",0,0,1,1);
+                  TPad * pad3 = new TPad("pad_d1","",0,0,1,1);
+                  TPad * pad4 = new TPad("pad_d2","",0,0,1,1);
+                  pad2->SetFillStyle(4000);
+                  pad2->SetFrameFillStyle(0);
+                  pad3->SetFillStyle(4000);
+                  pad3->SetFrameFillStyle(0);
+                  pad4->SetFillStyle(4000);
+                  pad4->SetFrameFillStyle(0);
+
+                  pad1->Draw();
+                  pad1->cd();
+                  an1->Draw("al");
+
+                  pad2->Draw();
+                  pad2->cd();
+                  an2->Draw("al");
+
+                  pad3->Draw();
+                  pad3->cd();
+                  d1->Draw("al");
+
+                  pad4->Draw();
+                  pad4->cd();
+                  d2->Draw("al");
+
+                  canv_wf_map[ch]->Modified();
+                  canv_wf_map[ch]->Update();
                 }
             }
         }
@@ -553,7 +693,33 @@ int main(int argc, char ** argv)
 
       if (count_events > 0 && i_evt > count_events) break;
       auto now_tp = std::chrono::system_clock::now();
-      if (count_seconds > 0 && std::chrono::duration_cast<std::chrono::seconds>(now_tp-start_tp).count() > count_seconds) break;
+      i_sec = std::chrono::duration_cast<std::chrono::seconds>(now_tp-start_tp).count();
+      if (count_seconds > 0 && i_sec > count_seconds) break;
+
+      auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now_tp-PrevRateTime).count();
+      if (elapsed > 1000)
+        {
+          std::cout << "\r" << "Pulses Recorded = (";
+          for (int ch = 0; ch < 8; ch++)
+            {
+              if (!(Params.ChannelMask & (1<<ch))) continue;
+              std::cout << std::setw(7) << chan_pulses[ch] << ",";
+            }
+          std::cout << "\b), Readout Rate = " << std::setw(7) << (double)Nb/((double)elapsed*1048.576f) << " MB/s, ";
+          std::cout << "Trig/Pileup Rate = (";
+          for (int ch = 0; ch < 8; ch++)
+            {
+              if (!(Params.ChannelMask & (1<<ch))) continue;
+              std::cout << std::setw(7) << (double)trgCnt[ch]/(double)elapsed << " kHz / " << std::setw(7) << (double)purCnt[ch]*100/(double)trgCnt[ch] << "%,";
+              trgCnt[ch] = 0;
+              purCnt[ch] = 0;
+            }
+          std::cout << "\b)" << std::flush;
+
+          Nb = 0;
+          PrevRateTime = std::chrono::system_clock::now();
+        }
+
     }
 
   auto end_tp = std::chrono::system_clock::now();
@@ -571,6 +737,8 @@ int main(int argc, char ** argv)
   //CheckErrorCode(CAEN_DGTZ_FreeDPPWaveforms(handle, Waveform),"FreeDPPWaveforms");
   CheckErrorCode(CAEN_DGTZ_CloseDigitizer(handle),"CloseDigitizer");
 
+  std::cout << std::endl;
+  std::cout << "Recorded " << i_evt << " events in " << i_sec << " seconds." << std::endl;
 
   return 0;
 }
