@@ -214,17 +214,70 @@ int main(int argc, char ** argv)
   long int count_events = -1;
   long int count_seconds = -1;
   bool disp = false;
-  if (cmdOptionExists(argv,argv+argc,"-t"))
+  char* dispopt;
+  int w, x, y, z;
+  if (cmdOptionExists(tapp.Argv(),tapp.Argv()+tapp.Argc(),"-t"))
     {
       // time the run
-      count_seconds = atol(getCmdOption(argv,argv+argc,"-t"));
+      char * result = getCmdOption(tapp.Argv(),tapp.Argv()+tapp.Argc(),"-t");
+      if (result == 0)
+        {
+          std::cout << "Provide a number." << std::endl;
+          std::cout << "Usage: ./DPPDaq -t [number of seconds to run]" << std::endl;
+          return -1;
+        }
+      count_seconds = atol(result);
+      std::cout << "Timed Run: " << count_seconds << " seconds." << std::endl;
     }
-  if (cmdOptionExists(argv,argv+argc,"-n"))
+  if (cmdOptionExists(tapp.Argv(),tapp.Argv()+tapp.Argc(),"-n"))
     {
       // count events
-      count_events = atol(getCmdOption(argv,argv+argc,"-n"));
+      char * result = getCmdOption(tapp.Argv(),tapp.Argv()+tapp.Argc(),"-n");
+      if (result == 0)
+        {
+          std::cout << "Provide a number." << std::endl;
+          std::cout << "Usage: ./DPPDaq -n [number of events to record]" << std::endl;
+          return -1;
+        }
+      count_events = atol(result);
+      std::cout << "Limited Run: " << count_events << " events." << std::endl;
     }
-  if (cmdOptionExists(argv,argv+argc,"-disp")) disp = true;
+  if (cmdOptionExists(tapp.Argv(),tapp.Argv()+tapp.Argc(),"-disp"))
+    {
+      dispopt = getCmdOption(tapp.Argv(),tapp.Argv()+tapp.Argc(),"-disp");
+      std::stringstream usage;
+      usage << "Usage: ./DPPDaq -disp wxyz" << std::endl;
+      usage << "   w: Analogue Trace 1 (0=Input, 1=RC-CR, 2=RC-CR2, 3=Trapezoid)" << std::endl;
+      usage << "   x: Analogue Trace 2 (0=Input, 1=Threshold, 2=Trap-Base, 3=Baseline)" << std::endl;
+      usage << "   y: Digital Trace 1  (0=Peaking, 1=Armed, 2=Peak Run, 3=Pile-up," << std::endl;
+      usage << "                        4=Peaking, 5=Trg Validation Window, 6=Baseline Freeze, 7=Trg Holdoff," << std::endl;
+      usage << "                        8=Trg Validation, 9=Acq Busy, a=Zero Cross Window, b=Ext Trg, c=Busy)" << std::endl;
+      usage << "   z: Digital Trace 2  (0=Trigger)" << std::endl;
+      usage << "E.g. \"./DPPDaq -disp 20b0\" will display RC-CR2, Input, Ext Trg, and Trigger." << std::endl;
+      if (dispopt == 0 || strlen(dispopt) != 4 ||
+          (!((dispopt[0]=='0' || dispopt[0]=='1' || dispopt[0]=='2' || dispopt[0]=='3') &&
+            (dispopt[1]=='0' || dispopt[1]=='1' || dispopt[1]=='2' || dispopt[1]=='3') &&
+            (dispopt[2]=='0' || dispopt[2]=='1' || dispopt[2]=='2' || dispopt[2]=='3' ||
+             dispopt[2]=='4' || dispopt[2]=='5' || dispopt[2]=='6' || dispopt[2]=='7' ||
+             dispopt[2]=='8' || dispopt[2]=='9' || dispopt[2]=='a' || dispopt[2]=='A' ||
+             dispopt[2]=='b' || dispopt[2]=='B' || dispopt[2]=='c' || dispopt[2]=='C') &&
+            (dispopt[3]=='0'))))
+        {
+          std::cout << "Invalid choice of display options." << std::endl << usage.str();
+          return -1;
+        }
+
+      if (dispopt[0] >= '0' && dispopt[0] <= '3') w = dispopt[0]-'0';
+      if (dispopt[1] >= '0' && dispopt[1] <= '3') x = dispopt[1]-'0';
+      if (dispopt[2] >= '0' && dispopt[2] <= '9') y = dispopt[2]-'0';
+      if (dispopt[2] >= 'a' && dispopt[2] <= 'c') y = dispopt[2]-'a'+10;
+      if (dispopt[2] >= 'A' && dispopt[2] <= 'C') y = dispopt[2]-'A'+10;
+      if (dispopt[3] == '0') z = dispopt[3]-'0';
+
+      disp = true;
+      std::cout << "Display histograms and traces using options " << dispopt << std::endl;
+    }
+
 
   std::string thisTimeString = MakeTimeString();
 
@@ -232,6 +285,8 @@ int main(int argc, char ** argv)
   configfilename << "config_DPPDaq_" << thisTimeString << ".txt";
   std::cout << "Config filename " << configfilename.str() << std::endl;
   std::ofstream fs(configfilename.str());
+
+  if (disp) fs << "Display options: " << dispopt << std::endl;
 
   int handle;
 
@@ -269,12 +324,12 @@ int main(int argc, char ** argv)
       DPPParams.thr[ch] = 50;// discriminator threshold (LSB)
       DPPParams.k[ch] = 6000;// trap rise time (ns)
       DPPParams.m[ch] = 1000;// trap flat top (ns)
-      DPPParams.M[ch] = 110000;// Exponential decay time of the preamp (ns)
+      DPPParams.M[ch] = 115000;// Exponential decay time of the preamp (ns)
       DPPParams.ftd[ch] = 0.8*DPPParams.m[ch];// flat top delay ("PEAKING TIME"), 80% of flat top is a good value
-      DPPParams.a[ch] = 16;// RC-CR2 smoothing factor
-      DPPParams.b[ch] = 312;//input rise time (ns)
-      DPPParams.trgho[ch] = 496;// Trigger hold-off
-      DPPParams.nsbl[ch] = 3;// Num samples in baseline averaging
+      DPPParams.a[ch] = 0x8;// RC-CR2 smoothing factor
+      DPPParams.b[ch] = 104;//input rise time (ns)
+      DPPParams.trgho[ch] = 200;// Trigger hold-off
+      DPPParams.nsbl[ch] = 3;// Num samples in baseline averaging, 0b11 = 256 samples (512ns)
       DPPParams.nspk[ch] = 2;// peak mean 0x2 = 0b10 corresponds to 16 samples
       DPPParams.pkho[ch] = 960;// peak hold-off
       DPPParams.blho[ch] = 500;// baseline hold-off
@@ -293,12 +348,12 @@ int main(int argc, char ** argv)
   MoreChanParams.SaveDecimated = 0;
   MoreChanParams.TrigPropagation = 1;
   MoreChanParams.DualTrace = (disp)?1:0;
-  MoreChanParams.AnProbe1 = (disp)?0:0;// 0=input, 1=RC-CR, 2=RC-CR2, 3=trapezoid
-  MoreChanParams.AnProbe2 = (disp)?2:0;// 0=input, 1=threshold, 2=trap-base, 3=baseline
+  MoreChanParams.AnProbe1 = (disp)?w:0;// 0=input, 1=RC-CR, 2=RC-CR2, 3=trapezoid
+  MoreChanParams.AnProbe2 = (disp)?x:0;// 0=input, 1=threshold, 2=trap-base, 3=baseline
   MoreChanParams.WaveformRecording = (disp)?1:0;
   MoreChanParams.EnableExtras2 = 0;
-  MoreChanParams.DigVirtProbe1 = (disp)?0:0;// 0=peaking, 3=pileup, 5=trig valid window, 7=trig holdoff, 8=trig validation, 10=zero cross window, 11=ext trig, 12=busy (other options available)
-  MoreChanParams.DigVirtProbe2 = 0;// 0=Trigger
+  MoreChanParams.DigVirtProbe1 = (disp)?y:0;// 0=peaking, 3=pileup, 5=trig valid window, 7=trig holdoff, 8=trig validation, 10=zero cross window, 11=ext trig, 12=busy (other options available)
+  MoreChanParams.DigVirtProbe2 = (disp)?z:0;// 0=Trigger
   std::bitset<32> boardcfg(0);
   boardcfg |= MoreChanParams.AutoDataFlush << 0;
   boardcfg |= MoreChanParams.SaveDecimated << 1;
@@ -415,7 +470,7 @@ int main(int argc, char ** argv)
           CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x104C+i*0x100,&value),"ReadFineGainChannelI");
           fs << "Ch" << i << " Fine Gain: " << value << " (if =250, fg is probably 1.0)" << std::endl;
           CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x1054+i*0x100,&value),"ReadRC-CR2SmootingFactorChannelI");
-          fs << "Ch" << i << " RC-CR2 Smoothing Factor: " << std::hex << value << std::dec << std::endl;
+          fs << "Ch" << i << " RC-CR2 Smoothing Factor: 0x" << std::hex << value << std::dec << std::endl;
           CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x1058+i*0x100,&value),"ReadInputRiseTimeChannelI");
           fs << "Ch" << i << " Input Rise Time: " << value*8 << " ns" << std::endl;
           CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x105C+i*0x100,&value),"ReadTrapRiseTimeChannelI");
@@ -539,8 +594,8 @@ int main(int argc, char ** argv)
   filename << "DPPDaq_" << thisTimeString << ".root";
   std::cout << "Output filename " << filename.str() << std::endl;
   TFile * fout = TFile::Open(filename.str().c_str(),"RECREATE");
-  TH1I * h_ch0 = new TH1I("h_ch0",";ADC Channel;",16384,0,16384);
-  TH1I * h_ch1 = new TH1I("h_ch1",";ADC Channel;",16384,0,16384);
+  TH1I h_ch0 = TH1I("h_ch0",";ADC Channel;",16384,0,16384);
+  TH1I h_ch1 = TH1I("h_ch1",";ADC Channel;",16384,0,16384);
 
   // Start acquisition
   uint32_t BufferSize;
@@ -560,13 +615,16 @@ int main(int argc, char ** argv)
   std::unordered_map<int,int> purCnt;
   int Nb = 0;
 
-  std::unordered_map<int,TCanvas*> canv_wf_map;
-  std::unordered_map<int,TCanvas*> canv_hist_map;
-  for (int ch = 0; ch < 8; ch++)
+  std::unordered_map<int,std::unique_ptr<TCanvas>> canv_wf_map;
+  std::unordered_map<int,std::unique_ptr<TCanvas>> canv_hist_map;
+  if (disp)
     {
-      if (!(Params.ChannelMask & (1<<ch))) continue;
-      canv_wf_map[ch] = new TCanvas(((std::string)"wf_ch"+std::to_string(ch)).c_str(),"",1600,900);
-      //canv_hist_map[ch] = new TCanvas(((std::string)"hist_ch"+std::to_string(ch)).c_str(),"",1600,900);
+      for (int ch = 0; ch < 8; ch++)
+        {
+          if (!(Params.ChannelMask & (1<<ch))) continue;
+          canv_wf_map[ch] = std::make_unique<TCanvas>(((std::string)"wf_ch"+std::to_string(ch)).c_str(),"",1600,900);
+          canv_hist_map[ch] = std::make_unique<TCanvas>(((std::string)"hist_ch"+std::to_string(ch)).c_str(),"",1600,900);
+        }
     }
 
   while(keep_continue)
@@ -585,8 +643,8 @@ int main(int argc, char ** argv)
               uint32_t energy = Events[ch][ev].Energy;
               if (energy > 10 && energy < 32768)
                 {
-                  if (ch==0) h_ch0->Fill(energy);
-                  if (ch==1) h_ch1->Fill(energy);
+                  if (ch==0) h_ch0.Fill(energy);
+                  if (ch==1) h_ch1.Fill(energy);
                   chan_pulses[ch]++;
                 }
               else
@@ -596,21 +654,18 @@ int main(int argc, char ** argv)
               if (disp && ev == 0 && energy > 10 && energy < 32768)
                 {
                   int size;
-                  int *time_x;
-                  int16_t *WaveLine_an1; Int_t *WL_an1;
-                  int16_t *WaveLine_an2; Int_t *WL_an2;
-                  uint8_t *DigitalWaveLine_d1; Int_t *DWL_d1;
-                  uint8_t *DigitalWaveLine_d2; Int_t *DWL_d2;
+                  std::vector<Int_t> time_x;
+                  int16_t *WaveLine_an1;
+                  int16_t *WaveLine_an2;
+                  uint8_t *DigitalWaveLine_d1;
+                  uint8_t *DigitalWaveLine_d2;
+
+                  std::vector<Int_t> WL_an1, WL_an2, DWL_d1, DWL_d2;
+
                   CheckErrorCode(CAEN_DGTZ_DecodeDPPWaveforms(handle, &Events[ch][ev], Waveform),"DecodeDPPWaveforms");
 
                   // Use waveform data here...
                   size = (int)(Waveform->Ns); // Number of samples
-
-                  time_x = (Int_t*)malloc(sizeof(Int_t)*size);
-                  WL_an1 = (Int_t*)malloc(sizeof(Int_t)*size);
-                  WL_an2 = (Int_t*)malloc(sizeof(Int_t)*size);
-                  DWL_d1 = (Int_t*)malloc(sizeof(Int_t)*size);
-                  DWL_d2 = (Int_t*)malloc(sizeof(Int_t)*size);
 
                   WaveLine_an1 = Waveform->Trace1; // First trace (ANALOG_TRACE_1)
                   WaveLine_an2 = Waveform->Trace2; // Second Trace ANALOG_TRACE_2 (if single trace mode, it is a sequence of zeroes)
@@ -619,79 +674,91 @@ int main(int argc, char ** argv)
 
                   for (int pt = 0; pt < size; ++pt)
                     {
-                      time_x[pt] = pt*2;
-                      WL_an1[pt] = static_cast<Int_t>(WaveLine_an1[pt]);
-                      WL_an2[pt] = static_cast<Int_t>(WaveLine_an2[pt]);
-                      DWL_d1[pt] = static_cast<Int_t>(DigitalWaveLine_d1[pt]);
-                      DWL_d2[pt] = static_cast<Int_t>(DigitalWaveLine_d2[pt]);
+                      time_x.push_back(pt*2);
+                      WL_an1.push_back(static_cast<Int_t>(WaveLine_an1[pt]));
+                      WL_an2.push_back(static_cast<Int_t>(WaveLine_an2[pt]));
+                      DWL_d1.push_back(static_cast<Int_t>(DigitalWaveLine_d1[pt]));
+                      DWL_d2.push_back(static_cast<Int_t>(DigitalWaveLine_d2[pt]));
                     }
 
                   canv_wf_map[ch]->cd();
 
-                  TGraph * an1 = new TGraph(size,time_x,WL_an1);
-                  an1->SetTitle(((std::string)"Channel"+std::to_string(ch)+";Time (ns);ADC Value").c_str());
-                  an1->SetLineColor(kBlack);
-                  an1->GetYaxis()->SetRangeUser(-8192,16384);
-                  TGraph * an2 = new TGraph(size,time_x,WL_an2);
-                  an2->SetTitle("");
-                  an2->SetLineColor(kRed);
-                  an2->GetXaxis()->SetLabelSize(0);
-                  an2->GetXaxis()->SetTickLength(0);
-                  an2->GetYaxis()->SetLabelSize(0);
-                  an2->GetYaxis()->SetTickLength(0);
-                  an2->GetYaxis()->SetRangeUser(-8192,16384);
-                  TGraph * d1 = new TGraph(size,time_x,DWL_d1);
-                  d1->SetTitle("");
-                  d1->SetLineColor(kBlue);
-                  d1->GetXaxis()->SetLabelSize(0);
-                  d1->GetXaxis()->SetTickLength(0);
-                  d1->GetYaxis()->SetLabelSize(0);
-                  d1->GetYaxis()->SetTickLength(0);
-                  d1->GetYaxis()->SetRangeUser(-1,3);
-                  TGraph * d2 = new TGraph(size,time_x,DWL_d2);
-                  d2->SetTitle("");
-                  d2->SetLineColor(kGreen);
-                  d2->GetXaxis()->SetLabelSize(0);
-                  d2->GetXaxis()->SetTickLength(0);
-                  d2->GetYaxis()->SetLabelSize(0);
-                  d2->GetYaxis()->SetTickLength(0);
-                  d2->GetYaxis()->SetRangeUser(-1,3);
+                  TGraph an1(size,time_x.data(),WL_an1.data());
+                  an1.SetTitle(((std::string)"Channel"+std::to_string(ch)+";Time (ns);ADC Value").c_str());
+                  an1.SetLineColor(kBlack);
+                  an1.GetYaxis()->SetRangeUser(-8192,16384);
+                  //if (x!=2) an1.GetYaxis()->SetRangeUser(-100,100);// To view threshold and baseline
+                  if (w==2) an1.GetXaxis()->SetRangeUser(2000,3000);// To view RC-CR2 easier
+                  TGraph an2(size,time_x.data(),WL_an2.data());
+                  an2.SetTitle("");
+                  an2.SetLineColor(kRed);
+                  an2.GetXaxis()->SetLabelSize(0);
+                  an2.GetXaxis()->SetTickLength(0);
+                  an2.GetYaxis()->SetLabelSize(0);
+                  an2.GetYaxis()->SetTickLength(0);
+                  an2.GetYaxis()->SetRangeUser(-8192,16384);
+                  //if (x!=2) an2.GetYaxis()->SetRangeUser(-100,100);// To view threshold and baseline
+                  if (w==2) an2.GetXaxis()->SetRangeUser(2000,3000);// To view RC-CR2 easier
+                  TGraph d1(size,time_x.data(),DWL_d1.data());
+                  d1.SetTitle("");
+                  d1.SetLineColor(kBlue);
+                  d1.GetXaxis()->SetLabelSize(0);
+                  d1.GetXaxis()->SetTickLength(0);
+                  d1.GetYaxis()->SetLabelSize(0);
+                  d1.GetYaxis()->SetTickLength(0);
+                  //d1.GetYaxis()->SetRangeUser(-1,3);
+                  if (w==2) d1.GetXaxis()->SetRangeUser(2000,3000);// To view RC-CR2 easier
+                  TGraph d2(size,time_x.data(),DWL_d2.data());
+                  d2.SetTitle("");
+                  d2.SetLineColor(kGreen);
+                  d2.GetXaxis()->SetLabelSize(0);
+                  d2.GetXaxis()->SetTickLength(0);
+                  d2.GetYaxis()->SetLabelSize(0);
+                  d2.GetYaxis()->SetTickLength(0);
+                  //d2.GetYaxis()->SetRangeUser(-1,3);
+                  if (w==2) d2.GetXaxis()->SetRangeUser(2000,3000);//To view RC-CR2 easier
 
-                  TPad * pad1 = new TPad("pad_an1","",0,0,1,1);
-                  TPad * pad2 = new TPad("pad_an2","",0,0,1,1);
-                  TPad * pad3 = new TPad("pad_d1","",0,0,1,1);
-                  TPad * pad4 = new TPad("pad_d2","",0,0,1,1);
-                  pad2->SetFillStyle(4000);
-                  pad2->SetFrameFillStyle(0);
-                  pad3->SetFillStyle(4000);
-                  pad3->SetFrameFillStyle(0);
-                  pad4->SetFillStyle(4000);
-                  pad4->SetFrameFillStyle(0);
+                  TPad pad1("pad_an1","",0,0,1,1);
+                  TPad pad2("pad_an2","",0,0,1,1);
+                  TPad pad3("pad_d1","",0,0,1,1);
+                  TPad pad4("pad_d2","",0,0,1,1);
+                  pad2.SetFillStyle(4000);
+                  pad2.SetFrameFillStyle(0);
+                  pad3.SetFillStyle(4000);
+                  pad3.SetFrameFillStyle(0);
+                  pad4.SetFillStyle(4000);
+                  pad4.SetFrameFillStyle(0);
 
-                  pad1->Draw();
-                  pad1->cd();
-                  an1->Draw("al");
+                  pad1.Draw();
+                  pad1.cd();
+                  an1.Draw("al");
 
-                  pad2->Draw();
-                  pad2->cd();
-                  an2->Draw("al");
+                  pad2.Draw();
+                  pad2.cd();
+                  an2.Draw("al");
 
-                  pad3->Draw();
-                  pad3->cd();
-                  d1->Draw("al");
+                  pad3.Draw();
+                  pad3.cd();
+                  d1.Draw("al");
 
-                  pad4->Draw();
-                  pad4->cd();
-                  d2->Draw("al");
+                  pad4.Draw();
+                  pad4.cd();
+                  d2.Draw("al");
 
                   canv_wf_map[ch]->Modified();
                   canv_wf_map[ch]->Update();
+
+                  canv_hist_map[ch]->cd();
+                  if (ch == 0) h_ch0.Draw();
+                  if (ch == 1) h_ch1.Draw();
+                  canv_hist_map[ch]->Modified();
+                  canv_hist_map[ch]->Update();
                 }
             }
         }
-      ++i_evt;
+      //++i_evt;
 
-      if (count_events > 0 && i_evt > count_events) break;
+      if (count_events > 0 && i_evt >= count_events) break;
       auto now_tp = std::chrono::system_clock::now();
       i_sec = std::chrono::duration_cast<std::chrono::seconds>(now_tp-start_tp).count();
       if (count_seconds > 0 && i_sec > count_seconds) break;
@@ -699,7 +766,7 @@ int main(int argc, char ** argv)
       auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now_tp-PrevRateTime).count();
       if (elapsed > 1000)
         {
-          std::cout << "\r" << "Pulses Recorded = (";
+          std::cout << "\r" << "Event " << i_evt << ", Pulses Recorded = (";
           for (int ch = 0; ch < 8; ch++)
             {
               if (!(Params.ChannelMask & (1<<ch))) continue;
@@ -720,6 +787,8 @@ int main(int argc, char ** argv)
           PrevRateTime = std::chrono::system_clock::now();
         }
 
+      ++i_evt;
+
     }
 
   auto end_tp = std::chrono::system_clock::now();
@@ -727,14 +796,17 @@ int main(int argc, char ** argv)
 
   starttimevec.Write("starttime");
   endtimevec.Write("endtime");
-  h_ch0->Write();
-  h_ch1->Write();
+  h_ch0.Write();
+  h_ch1.Write();
   fout->Close();
+  fs.close();
+
+  delete fout;
 
   CheckErrorCode(CAEN_DGTZ_SWStopAcquisition(handle),"SWStopAcquisition");
   CheckErrorCode(CAEN_DGTZ_FreeReadoutBuffer(&buffer),"FreeReadoutBuffer");
   CheckErrorCode(CAEN_DGTZ_FreeDPPEvents(handle,(void**)Events),"FreeDPPEvents");
-  //CheckErrorCode(CAEN_DGTZ_FreeDPPWaveforms(handle, Waveform),"FreeDPPWaveforms");
+  CheckErrorCode(CAEN_DGTZ_FreeDPPWaveforms(handle, Waveform),"FreeDPPWaveforms");
   CheckErrorCode(CAEN_DGTZ_CloseDigitizer(handle),"CloseDigitizer");
 
   std::cout << std::endl;
