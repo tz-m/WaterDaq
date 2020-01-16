@@ -329,19 +329,19 @@ int main(int argc, char ** argv)
       DPPParams.a[ch] = 0x8;// RC-CR2 smoothing factor
       DPPParams.b[ch] = 104;//input rise time (ns)
       DPPParams.trgho[ch] = 200;// Trigger hold-off
-      DPPParams.nsbl[ch] = 3;// Num samples in baseline averaging, 0b11 = 256 samples (512ns)
+      DPPParams.nsbl[ch] = 4;// Num samples in baseline averaging, 0b11 = 256 samples (512ns)
       DPPParams.nspk[ch] = 2;// peak mean 0x2 = 0b10 corresponds to 16 samples
       DPPParams.pkho[ch] = 960;// peak hold-off
-      DPPParams.blho[ch] = 500;// baseline hold-off
+      DPPParams.blho[ch] = 8000;// baseline hold-off
       DPPParams.enf[ch] = 1.0;// energy normalisation factor
       DPPParams.decimation[ch] = 0;
       DPPParams.dgain[ch] = 0;
       DPPParams.otrej[ch] = 0;
       DPPParams.trgwin[ch] = 1;// enable/disable rise time discriminator
-      DPPParams.twwdt[ch] = 312;// rise time validation window
+      DPPParams.twwdt[ch] = 144;// rise time validation window
       MoreChanParams.InputDynamicRange[ch] = 0;
       MoreChanParams.PreTriggerSize[ch] = 1000;
-      MoreChanParams.ChannelDCOffset[ch] = (1-0.2)*0xFFFF;// use formula (1 - percent_offset)*0xFFFF where percent_offset is the place you want the baseline within the full range, e.g. 0.2 for 20%
+      MoreChanParams.ChannelDCOffset[ch] = (1-0.1)*0xFFFF;// use formula (1 - percent_offset)*0xFFFF where percent_offset is the place you want the baseline within the full range, e.g. 0.2 for 20%
     }
 
   MoreChanParams.AutoDataFlush = 1;
@@ -351,7 +351,7 @@ int main(int argc, char ** argv)
   MoreChanParams.AnProbe1 = (disp)?w:0;// 0=input, 1=RC-CR, 2=RC-CR2, 3=trapezoid
   MoreChanParams.AnProbe2 = (disp)?x:0;// 0=input, 1=threshold, 2=trap-base, 3=baseline
   MoreChanParams.WaveformRecording = (disp)?1:0;
-  MoreChanParams.EnableExtras2 = 0;
+  MoreChanParams.EnableExtras2 = 1;
   MoreChanParams.DigVirtProbe1 = (disp)?y:0;// 0=peaking, 3=pileup, 5=trig valid window, 7=trig holdoff, 8=trig validation, 10=zero cross window, 11=ext trig, 12=busy (other options available)
   MoreChanParams.DigVirtProbe2 = (disp)?z:0;// 0=Trigger
   std::bitset<32> boardcfg(0);
@@ -407,16 +407,25 @@ int main(int argc, char ** argv)
   CheckErrorCode(CAEN_DGTZ_SetRunSynchronizationMode(handle, CAEN_DGTZ_RUN_SYNC_Disabled),"SetRunSynchronizationMode");
   CheckErrorCode(CAEN_DGTZ_SetDPPParameters(handle, Params.ChannelMask, &DPPParams),"SetDPPParameters");
 
+  // Global Trigger Mask
   CheckErrorCode(CAEN_DGTZ_ReadRegister(handle, 0x810C, &value),"ReadRegister(0x810C)");
-  value |= 1UL << 30;// Enable external trigger
-  value &= ~(1UL << 31);// Disable software trigger
+  //value |= 1UL << 30;// Enable external trigger
+  //value &= ~(1UL << 31);// Disable software trigger
+  //value |= 1UL << 0;// Channels 0 and 1 contribute to global trigger generation
   CheckErrorCode(CAEN_DGTZ_WriteRegister(handle, 0x810C, value),"WriteRegister(0x810C)");
+
 
   CheckErrorCode(CAEN_DGTZ_ReadRegister(handle, 0x811C, &value),"ReadRegister(0x811C)");
   value |= 1UL << 10;// Trigger is synchronized with the whole duration of the TRG-IN signal
+  value &= ~(1UL << 11);// Trig in processed by motherboard then sent to mezzanines
+  //value |= 1UL << 11;// Trig in sent directly to mazzanines
   CheckErrorCode(CAEN_DGTZ_WriteRegister(handle, 0x811C, value),"WriteRegister(0x811C");
 
   CheckErrorCode(CAEN_DGTZ_WriteRegister(handle, 0x817C, 0),"WriteEnableExternalTrigger");
+
+  CheckErrorCode(CAEN_DGTZ_ReadRegister(handle, 0x8180, &value),"ReadTriggerValidationMask_Couple0");
+  value |= 1UL << 30;// External trigger creates validation signal
+  CheckErrorCode(CAEN_DGTZ_WriteRegister(handle, 0x8180, value),"WriteTriggerValidationMask_Couple0");
 
   for (int i = 0; i < 8; i++)
     {
@@ -425,18 +434,32 @@ int main(int argc, char ** argv)
           CheckErrorCode(CAEN_DGTZ_SetDPPPreTriggerSize(handle, i, MoreChanParams.PreTriggerSize[i]),"SetDPPPreTriggerSize");
           CheckErrorCode(CAEN_DGTZ_SetChannelPulsePolarity(handle, i, Params.PulsePolarity),"SetChannelPulsePolarity");
 
-          // Disable self trigger (set bit 24 to 1)
           CheckErrorCode(CAEN_DGTZ_ReadRegister(handle, 0x1080+i*0x100, &value),"ReadRegister(0x1080)");
-          value |= 1UL << 24;
+          value |= 1UL << 24;// Disable self trigger
+          //value &= ~(1UL << 24);// Enable self trigger
+          value &= ~(1UL << 19); value |= 1UL << 18;// Enable coincidence mode
+          //value |= 1UL << 27;// Readout pile-up events
           CheckErrorCode(CAEN_DGTZ_WriteRegister(handle, 0x1080+i*0x100, value),"WriteRegister(0x1080)");
 
-          // Enable BLR optimization
+          // DPP Algorithm 2
           CheckErrorCode(CAEN_DGTZ_ReadRegister(handle, 0x10A0+i*0x100, &value),"ReadDPPAlg2");
-          value |= 1UL << 29;
+          value |= 1UL << 29;// Enable BLR optimization
+          //test all of these again, put them in the wrong register before...
+          //value &= ~(1UL << 2);// Disable local shaped trigger
+          value |= 1UL << 2;// Enable local shaped trigger
+          value |= 1UL << 0; value |= 1UL << 1; // set local shaped trigger mode OR
+          value &= ~(1UL << 5); value |= 1UL << 4;// Set trig validation mode Motherboard
+          //value |= 1UL << 5; value &= ~(1UL << 4);// Set trig validation mode AND
+          //value |= 1UL << 5; value |= 1UL << 4;   // Set trig validation mode OR
+          value |= 1UL << 6;// Enable local trigger validation mode
+          //value &= ~(1UL << 6);// Disable local trigger validation mode)
           CheckErrorCode(CAEN_DGTZ_WriteRegister(handle, 0x10A0+i*0x100, value),"WriteDPPAlg2");
 
           // set input dynamic range
           CheckErrorCode(CAEN_DGTZ_WriteRegister(handle, 0x1028+i*0x100, MoreChanParams.InputDynamicRange[i]),"SetInputDynamicRange");
+
+          // set shaped trigger width
+          CheckErrorCode(CAEN_DGTZ_WriteRegister(handle, 0x1084+i*0x100, 400),"WriteShapedTriggerWidth");
         }
     }
   CheckErrorCode(CAEN_DGTZ_SetDPPEventAggregation(handle, Params.EventAggr, 0),"SetDPPEventAggregation");
@@ -641,7 +664,9 @@ int main(int argc, char ** argv)
             {
               trgCnt[ch]++;
               uint32_t energy = Events[ch][ev].Energy;
-              if (energy > 10 && energy < 32768)
+              //int16_t extras = Events[ch][ev].Extras;
+              //uint32_t extras2 = Events[ch][ev].Extras2;
+              if (energy > static_cast<uint32_t>(DPPParams.thr[ch]) && energy < std::pow(2,14)-1)
                 {
                   if (ch==0) h_ch0.Fill(energy);
                   if (ch==1) h_ch1.Fill(energy);
@@ -651,7 +676,7 @@ int main(int argc, char ** argv)
                 {
                   purCnt[ch]++;
                 }
-              if (disp && ev == 0 && energy > 10 && energy < 32768)
+              if (disp && ev == 0 /*&& energy > static_cast<uint32_t>(DPPParams.thr[ch]) && energy < std::pow(2,14)-1*/)
                 {
                   int size;
                   std::vector<Int_t> time_x;
@@ -661,6 +686,7 @@ int main(int argc, char ** argv)
                   uint8_t *DigitalWaveLine_d2;
 
                   std::vector<Int_t> WL_an1, WL_an2, DWL_d1, DWL_d2;
+                  //uint32_t AllocatedSize;
 
                   CheckErrorCode(CAEN_DGTZ_DecodeDPPWaveforms(handle, &Events[ch][ev], Waveform),"DecodeDPPWaveforms");
 
@@ -688,7 +714,7 @@ int main(int argc, char ** argv)
                   an1.SetLineColor(kBlack);
                   an1.GetYaxis()->SetRangeUser(-8192,16384);
                   //if (x!=2) an1.GetYaxis()->SetRangeUser(-100,100);// To view threshold and baseline
-                  if (w==2) an1.GetXaxis()->SetRangeUser(2000,3000);// To view RC-CR2 easier
+                  if (w==2) an1.GetXaxis()->SetRangeUser(0,4000);// To view RC-CR2 easier
                   TGraph an2(size,time_x.data(),WL_an2.data());
                   an2.SetTitle("");
                   an2.SetLineColor(kRed);
@@ -698,7 +724,7 @@ int main(int argc, char ** argv)
                   an2.GetYaxis()->SetTickLength(0);
                   an2.GetYaxis()->SetRangeUser(-8192,16384);
                   //if (x!=2) an2.GetYaxis()->SetRangeUser(-100,100);// To view threshold and baseline
-                  if (w==2) an2.GetXaxis()->SetRangeUser(2000,3000);// To view RC-CR2 easier
+                  if (w==2) an2.GetXaxis()->SetRangeUser(0,4000);// To view RC-CR2 easier
                   TGraph d1(size,time_x.data(),DWL_d1.data());
                   d1.SetTitle("");
                   d1.SetLineColor(kBlue);
@@ -707,7 +733,7 @@ int main(int argc, char ** argv)
                   d1.GetYaxis()->SetLabelSize(0);
                   d1.GetYaxis()->SetTickLength(0);
                   //d1.GetYaxis()->SetRangeUser(-1,3);
-                  if (w==2) d1.GetXaxis()->SetRangeUser(2000,3000);// To view RC-CR2 easier
+                  if (w==2) d1.GetXaxis()->SetRangeUser(0,4000);// To view RC-CR2 easier
                   TGraph d2(size,time_x.data(),DWL_d2.data());
                   d2.SetTitle("");
                   d2.SetLineColor(kGreen);
@@ -716,7 +742,7 @@ int main(int argc, char ** argv)
                   d2.GetYaxis()->SetLabelSize(0);
                   d2.GetYaxis()->SetTickLength(0);
                   //d2.GetYaxis()->SetRangeUser(-1,3);
-                  if (w==2) d2.GetXaxis()->SetRangeUser(2000,3000);//To view RC-CR2 easier
+                  if (w==2) d2.GetXaxis()->SetRangeUser(0,4000);//To view RC-CR2 easier
 
                   TPad pad1("pad_an1","",0,0,1,1);
                   TPad pad2("pad_an2","",0,0,1,1);
