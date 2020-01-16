@@ -126,8 +126,6 @@ void CheckErrorCode(CAEN_DGTZ_ErrorCode ret, std::string caller)
       break;
     case -99L: std::cout << caller << ": NotYetImplemented" << std::endl;
       break;
-    default: std::cout << caller << ": UnspecifiedError" << std::endl;
-      break;
     }
   if (ret != CAEN_DGTZ_Success) exit(ret);
 }
@@ -142,8 +140,8 @@ uint32_t ExtractBits(uint32_t value, uint32_t nbits, uint32_t startbit)
 
 std::string AsBinary(uint32_t value)
 {
-  int bits_needed = 32;
-  for (int expo = 1; expo <= 32; ++expo)
+  uint32_t bits_needed = 32;
+  for (uint32_t expo = 1; expo <= 32; ++expo)
     {
       if (value <= std::pow(2,expo)-1)
         {
@@ -152,7 +150,7 @@ std::string AsBinary(uint32_t value)
         }
     }
   std::stringstream ss; ss << "0b";
-  for (int b = bits_needed; b > 0; --b)
+  for (uint32_t b = bits_needed; b > 0; --b)
     {
       ss << ExtractBits(value,1,b-1);
     }
@@ -165,9 +163,9 @@ TVectorD MakeTimeVec(std::chrono::system_clock::time_point tp)
   auto ymd = date::year_month_day{dp};
   auto time = date::make_time(std::chrono::duration_cast<std::chrono::milliseconds>(tp-dp));
   TVectorD timevec(7);
-  timevec[0] = (int)ymd.year();
-  timevec[1] = (unsigned)ymd.month();
-  timevec[2] = (unsigned)ymd.day();
+  timevec[0] = static_cast<int>(ymd.year());
+  timevec[1] = static_cast<unsigned>(ymd.month());
+  timevec[2] = static_cast<unsigned>(ymd.day());
   timevec[3] = time.hours().count();
   timevec[4] = time.minutes().count();
   timevec[5] = time.seconds().count();
@@ -182,9 +180,9 @@ std::string MakeTimeString()
   auto ymd = date::year_month_day{dp};
   auto time = date::make_time(std::chrono::duration_cast<std::chrono::milliseconds>(tp-dp));
   std::stringstream s;
-  s << std::setfill('0') << std::setw(4) << (int)ymd.year();
-  s << std::setfill('0') << std::setw(2) << (unsigned)ymd.month();
-  s << std::setfill('0') << std::setw(2) << (unsigned)ymd.day();
+  s << std::setfill('0') << std::setw(4) << static_cast<int>(ymd.year());
+  s << std::setfill('0') << std::setw(2) << static_cast<unsigned>(ymd.month());
+  s << std::setfill('0') << std::setw(2) << static_cast<unsigned>(ymd.day());
   s << "_";
   s << std::setfill('0') << std::setw(2) << time.hours().count();
   s << std::setfill('0') << std::setw(2) << time.minutes().count();
@@ -199,7 +197,7 @@ char* getCmdOption(char ** begin, char ** end, const std::string & option)
     {
       return *itr;
     }
-  return 0;
+  return nullptr;
 }
 
 bool cmdOptionExists(char** begin, char** end, const std::string& option)
@@ -215,12 +213,12 @@ int main(int argc, char ** argv)
   long int count_seconds = -1;
   bool disp = false;
   char* dispopt;
-  int w, x, y, z;
+  uint32_t w, x, y, z;
   if (cmdOptionExists(tapp.Argv(),tapp.Argv()+tapp.Argc(),"-t"))
     {
       // time the run
       char * result = getCmdOption(tapp.Argv(),tapp.Argv()+tapp.Argc(),"-t");
-      if (result == 0)
+      if (result == nullptr)
         {
           std::cout << "Provide a number." << std::endl;
           std::cout << "Usage: ./DPPDaq -t [number of seconds to run]" << std::endl;
@@ -233,7 +231,7 @@ int main(int argc, char ** argv)
     {
       // count events
       char * result = getCmdOption(tapp.Argv(),tapp.Argv()+tapp.Argc(),"-n");
-      if (result == 0)
+      if (result == nullptr)
         {
           std::cout << "Provide a number." << std::endl;
           std::cout << "Usage: ./DPPDaq -n [number of events to record]" << std::endl;
@@ -254,7 +252,7 @@ int main(int argc, char ** argv)
       usage << "                        8=Trg Validation, 9=Acq Busy, a=Zero Cross Window, b=Ext Trg, c=Busy)" << std::endl;
       usage << "   z: Digital Trace 2  (0=Trigger)" << std::endl;
       usage << "E.g. \"./DPPDaq -disp 20b0\" will display RC-CR2, Input, Ext Trg, and Trigger." << std::endl;
-      if (dispopt == 0 || strlen(dispopt) != 4 ||
+      if (dispopt == nullptr || strlen(dispopt) != 4 ||
           (!((dispopt[0]=='0' || dispopt[0]=='1' || dispopt[0]=='2' || dispopt[0]=='3') &&
             (dispopt[1]=='0' || dispopt[1]=='1' || dispopt[1]=='2' || dispopt[1]=='3') &&
             (dispopt[2]=='0' || dispopt[2]=='1' || dispopt[2]=='2' || dispopt[2]=='3' ||
@@ -267,12 +265,12 @@ int main(int argc, char ** argv)
           return -1;
         }
 
-      if (dispopt[0] >= '0' && dispopt[0] <= '3') w = dispopt[0]-'0';
-      if (dispopt[1] >= '0' && dispopt[1] <= '3') x = dispopt[1]-'0';
-      if (dispopt[2] >= '0' && dispopt[2] <= '9') y = dispopt[2]-'0';
-      if (dispopt[2] >= 'a' && dispopt[2] <= 'c') y = dispopt[2]-'a'+10;
-      if (dispopt[2] >= 'A' && dispopt[2] <= 'C') y = dispopt[2]-'A'+10;
-      if (dispopt[3] == '0') z = dispopt[3]-'0';
+      if (dispopt[0] >= '0' && dispopt[0] <= '3') w = static_cast<uint32_t>(dispopt[0]-'0');
+      if (dispopt[1] >= '0' && dispopt[1] <= '3') x = static_cast<uint32_t>(dispopt[1]-'0');
+      if (dispopt[2] >= '0' && dispopt[2] <= '9') y = static_cast<uint32_t>(dispopt[2]-'0');
+      if (dispopt[2] >= 'a' && dispopt[2] <= 'c') y = static_cast<uint32_t>(dispopt[2]-'a'+10);
+      if (dispopt[2] >= 'A' && dispopt[2] <= 'C') y = static_cast<uint32_t>(dispopt[2]-'A'+10);
+      if (dispopt[3] == '0') z = static_cast<uint32_t>(dispopt[3]-'0');
 
       disp = true;
       std::cout << "Display histograms and traces using options " << dispopt << std::endl;
@@ -291,9 +289,9 @@ int main(int argc, char ** argv)
   int handle;
 
   //buffers to store data
-  char *buffer = NULL;
+  char *buffer = nullptr;
   CAEN_DGTZ_DPP_PHA_Event_t *Events[8];
-  CAEN_DGTZ_DPP_PHA_Waveforms_t *Waveform=NULL;
+  CAEN_DGTZ_DPP_PHA_Waveforms_t *Waveform=nullptr;
 
   // digitizer configuration parameters
   CAEN_DGTZ_DPP_PHA_Params_t DPPParams;
@@ -325,7 +323,7 @@ int main(int argc, char ** argv)
       DPPParams.k[ch] = 6000;// trap rise time (ns)
       DPPParams.m[ch] = 1000;// trap flat top (ns)
       DPPParams.M[ch] = 115000;// Exponential decay time of the preamp (ns)
-      DPPParams.ftd[ch] = 0.8*DPPParams.m[ch];// flat top delay ("PEAKING TIME"), 80% of flat top is a good value
+      DPPParams.ftd[ch] = static_cast<int>(0.8*DPPParams.m[ch]);// flat top delay ("PEAKING TIME"), 80% of flat top is a good value
       DPPParams.a[ch] = 0x8;// RC-CR2 smoothing factor
       DPPParams.b[ch] = 104;//input rise time (ns)
       DPPParams.trgho[ch] = 200;// Trigger hold-off
@@ -341,7 +339,7 @@ int main(int argc, char ** argv)
       DPPParams.twwdt[ch] = 144;// rise time validation window
       MoreChanParams.InputDynamicRange[ch] = 0;
       MoreChanParams.PreTriggerSize[ch] = 1000;
-      MoreChanParams.ChannelDCOffset[ch] = (1-0.1)*0xFFFF;// use formula (1 - percent_offset)*0xFFFF where percent_offset is the place you want the baseline within the full range, e.g. 0.2 for 20%
+      MoreChanParams.ChannelDCOffset[ch] = static_cast<int>((1-0.1)*0xFFFF);// use formula (1 - percent_offset)*0xFFFF where percent_offset is the place you want the baseline within the full range, e.g. 0.2 for 20%
     }
 
   MoreChanParams.AutoDataFlush = 1;
@@ -397,7 +395,7 @@ int main(int argc, char ** argv)
   ////////////////////////////////
 
   CheckErrorCode(CAEN_DGTZ_Reset(handle),"Reset");
-  CheckErrorCode(CAEN_DGTZ_WriteRegister(handle,0x8000,boardcfg.to_ulong()),"SetBoardConfiguration");
+  CheckErrorCode(CAEN_DGTZ_WriteRegister(handle,0x8000,static_cast<uint32_t>(boardcfg.to_ulong())),"SetBoardConfiguration");
   CheckErrorCode(CAEN_DGTZ_SetDPPAcquisitionMode(handle, Params.AcqMode, CAEN_DGTZ_DPP_SAVE_PARAM_EnergyAndTime),"SetDPPAcquisitionMode");
   CheckErrorCode(CAEN_DGTZ_SetAcquisitionMode(handle, CAEN_DGTZ_SW_CONTROLLED),"SetAcquisitionMode");
   CheckErrorCode(CAEN_DGTZ_SetRecordLength(handle, Params.RecordLength),"SetRecordLength");//This value is Ns (number of samples, at 2ns per sample. So Ns=10k is 20us)
@@ -427,11 +425,11 @@ int main(int argc, char ** argv)
   value |= 1UL << 30;// External trigger creates validation signal
   CheckErrorCode(CAEN_DGTZ_WriteRegister(handle, 0x8180, value),"WriteTriggerValidationMask_Couple0");
 
-  for (int i = 0; i < 8; i++)
+  for (uint32_t i = 0; i < 8; i++)
     {
       if (Params.ChannelMask & (1<<i)) {
           CheckErrorCode(CAEN_DGTZ_SetChannelDCOffset(handle, i, MoreChanParams.ChannelDCOffset[i]),"SetChannelDCOffset");
-          CheckErrorCode(CAEN_DGTZ_SetDPPPreTriggerSize(handle, i, MoreChanParams.PreTriggerSize[i]),"SetDPPPreTriggerSize");
+          CheckErrorCode(CAEN_DGTZ_SetDPPPreTriggerSize(handle, static_cast<int>(i), MoreChanParams.PreTriggerSize[i]),"SetDPPPreTriggerSize");
           CheckErrorCode(CAEN_DGTZ_SetChannelPulsePolarity(handle, i, Params.PulsePolarity),"SetChannelPulsePolarity");
 
           CheckErrorCode(CAEN_DGTZ_ReadRegister(handle, 0x1080+i*0x100, &value),"ReadRegister(0x1080)");
@@ -466,8 +464,8 @@ int main(int argc, char ** argv)
 
   uint32_t AllocatedSize;
   CheckErrorCode(CAEN_DGTZ_MallocReadoutBuffer(handle, &buffer, &AllocatedSize),"MallocReadoutBuffer");
-  CheckErrorCode(CAEN_DGTZ_MallocDPPEvents(handle, (void**)Events, &AllocatedSize),"MallocDPPEvents");
-  CheckErrorCode(CAEN_DGTZ_MallocDPPWaveforms(handle, (void**)&Waveform, &AllocatedSize),"MallocDPPWaveforms");
+  CheckErrorCode(CAEN_DGTZ_MallocDPPEvents(handle, reinterpret_cast<void**>(Events), &AllocatedSize),"MallocDPPEvents");
+  CheckErrorCode(CAEN_DGTZ_MallocDPPWaveforms(handle, reinterpret_cast<void**>(&Waveform), &AllocatedSize),"MallocDPPWaveforms");
 
 
   /*Check All Parameters*/
@@ -479,7 +477,7 @@ int main(int argc, char ** argv)
   fs << "GetNumEventsPerAggregate: " << value << std::endl;
 
   //Channel
-  for (int i = 0; i < 8; i++)
+  for (uint32_t i = 0; i < 8; i++)
     {
       if (Params.ChannelMask & (1<<i)) {
           CheckErrorCode(CAEN_DGTZ_GetRecordLength(handle,&value,i),"GetRecordLengthChannelI");
@@ -488,7 +486,7 @@ int main(int argc, char ** argv)
           fs << "Ch" << i << " Input Dynamic Range: " << ((value==0)?"2 Vpp":((value==1)?"0.5 Vpp":"Invalid")) << std::endl;
           CheckErrorCode(CAEN_DGTZ_GetNumEventsPerAggregate(handle,&value,i),"GetNumEventsPerAggregateChannelI");
           fs << "Ch" << i << " NumEventsPerAggregate: " << value << std::endl;
-          CheckErrorCode(CAEN_DGTZ_GetDPPPreTriggerSize(handle,i,&value),"GetDPPPreTriggerSize");
+          CheckErrorCode(CAEN_DGTZ_GetDPPPreTriggerSize(handle,static_cast<int>(i),&value),"GetDPPPreTriggerSize");
           fs << "Ch" << i << " PreTrigger: " << value*2 << " ns" << std::endl;
           CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x104C+i*0x100,&value),"ReadFineGainChannelI");
           fs << "Ch" << i << " Fine Gain: " << value << " (if =250, fg is probably 1.0)" << std::endl;
@@ -542,7 +540,7 @@ int main(int argc, char ** argv)
           fs << "    Baseline Calculation Always: " << AsBinary(ExtractBits(value,1,18)) << std::endl;
           fs << "    Tag corr/uncorr: " << ExtractBits(value,1,19) << std::endl;
           fs << "    BLR Optimization: " << ExtractBits(value,1,29) << std::endl;
-          CheckErrorCode(CAEN_DGTZ_ReadTemperature(handle,i,&value),"ReadTemperature");
+          CheckErrorCode(CAEN_DGTZ_ReadTemperature(handle,static_cast<int>(i),&value),"ReadTemperature");
           fs << "Ch" << i << " Temperature: " << value << " degC" << std::endl;
           CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x10D4+i*0x100,&value),"ReadVetoWidthChannelI");
           fs << "Ch" << i << " Veto Width: " << ExtractBits(value,16,0) << " in steps of " << AsBinary(ExtractBits(value,2,16)) << std::endl;
@@ -598,7 +596,7 @@ int main(int argc, char ** argv)
   fs << "    Software Trigger: " << ExtractBits(value,1,31) << std::endl;
 
   // Calibrate ADCs
-  for (int ch = 0; ch < 8; ch++)
+  for (uint32_t ch = 0; ch < 8; ch++)
     {
       if (!(Params.ChannelMask & (1<<ch))) continue;
       CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x1088+ch*0x100,&value),"CheckChannelIStatus");
@@ -632,7 +630,7 @@ int main(int argc, char ** argv)
   auto PrevRateTime = start_tp;
 
   int i_evt = 0;
-  int i_sec = 0;
+  long int i_sec = 0;
   std::unordered_map<int,int> chan_pulses;
   std::unordered_map<int,int> trgCnt;
   std::unordered_map<int,int> purCnt;
@@ -645,8 +643,8 @@ int main(int argc, char ** argv)
       for (int ch = 0; ch < 8; ch++)
         {
           if (!(Params.ChannelMask & (1<<ch))) continue;
-          canv_wf_map[ch] = std::make_unique<TCanvas>(((std::string)"wf_ch"+std::to_string(ch)).c_str(),"",1600,900);
-          canv_hist_map[ch] = std::make_unique<TCanvas>(((std::string)"hist_ch"+std::to_string(ch)).c_str(),"",1600,900);
+          canv_wf_map[ch] = std::make_unique<TCanvas>((static_cast<std::string>("wf_ch")+std::to_string(ch)).c_str(),"",1600,900);
+          canv_hist_map[ch] = std::make_unique<TCanvas>((static_cast<std::string>("hist_ch")+std::to_string(ch)).c_str(),"",1600,900);
         }
     }
 
@@ -655,7 +653,7 @@ int main(int argc, char ** argv)
       CheckErrorCode(CAEN_DGTZ_ReadData(handle, CAEN_DGTZ_SLAVE_TERMINATED_READOUT_MBLT, buffer, &BufferSize),"ReadData");
       if (BufferSize == 0) continue;
       Nb += BufferSize;
-      CheckErrorCode(CAEN_DGTZ_GetDPPEvents(handle, buffer, BufferSize, (void**)Events, NumEvents),"GetDPPEvents");
+      CheckErrorCode(CAEN_DGTZ_GetDPPEvents(handle, buffer, BufferSize, reinterpret_cast<void**>(Events), NumEvents),"GetDPPEvents");
       for (int ch = 0; ch < 8; ch++)
         {
           if (!(Params.ChannelMask & (1<<ch))) continue;
@@ -691,7 +689,7 @@ int main(int argc, char ** argv)
                   CheckErrorCode(CAEN_DGTZ_DecodeDPPWaveforms(handle, &Events[ch][ev], Waveform),"DecodeDPPWaveforms");
 
                   // Use waveform data here...
-                  size = (int)(Waveform->Ns); // Number of samples
+                  size = static_cast<int>(Waveform->Ns); // Number of samples
 
                   WaveLine_an1 = Waveform->Trace1; // First trace (ANALOG_TRACE_1)
                   WaveLine_an2 = Waveform->Trace2; // Second Trace ANALOG_TRACE_2 (if single trace mode, it is a sequence of zeroes)
@@ -710,7 +708,7 @@ int main(int argc, char ** argv)
                   canv_wf_map[ch]->cd();
 
                   TGraph an1(size,time_x.data(),WL_an1.data());
-                  an1.SetTitle(((std::string)"Channel"+std::to_string(ch)+";Time (ns);ADC Value").c_str());
+                  an1.SetTitle((static_cast<std::string>("Channel")+std::to_string(ch)+";Time (ns);ADC Value").c_str());
                   an1.SetLineColor(kBlack);
                   an1.GetYaxis()->SetRangeUser(-8192,16384);
                   //if (x!=2) an1.GetYaxis()->SetRangeUser(-100,100);// To view threshold and baseline
@@ -798,12 +796,12 @@ int main(int argc, char ** argv)
               if (!(Params.ChannelMask & (1<<ch))) continue;
               std::cout << std::setw(7) << chan_pulses[ch] << ",";
             }
-          std::cout << "\b), Readout Rate = " << std::setw(7) << (double)Nb/((double)elapsed*1048.576f) << " MB/s, ";
+          std::cout << "\b), Readout Rate = " << std::setw(7) << static_cast<double>(Nb)/(static_cast<double>(elapsed*1048.576f)) << " MB/s, ";
           std::cout << "Trig/Pileup Rate = (";
           for (int ch = 0; ch < 8; ch++)
             {
               if (!(Params.ChannelMask & (1<<ch))) continue;
-              std::cout << std::setw(7) << (double)trgCnt[ch]/(double)elapsed << " kHz / " << std::setw(7) << (double)purCnt[ch]*100/(double)trgCnt[ch] << "%,";
+              std::cout << std::setw(7) << static_cast<double>(trgCnt[ch])/static_cast<double>(elapsed) << " kHz / " << std::setw(7) << static_cast<double>(purCnt[ch]*100)/static_cast<double>(trgCnt[ch]) << "%,";
               trgCnt[ch] = 0;
               purCnt[ch] = 0;
             }
@@ -831,7 +829,7 @@ int main(int argc, char ** argv)
 
   CheckErrorCode(CAEN_DGTZ_SWStopAcquisition(handle),"SWStopAcquisition");
   CheckErrorCode(CAEN_DGTZ_FreeReadoutBuffer(&buffer),"FreeReadoutBuffer");
-  CheckErrorCode(CAEN_DGTZ_FreeDPPEvents(handle,(void**)Events),"FreeDPPEvents");
+  CheckErrorCode(CAEN_DGTZ_FreeDPPEvents(handle,reinterpret_cast<void**>(Events)),"FreeDPPEvents");
   CheckErrorCode(CAEN_DGTZ_FreeDPPWaveforms(handle, Waveform),"FreeDPPWaveforms");
   CheckErrorCode(CAEN_DGTZ_CloseDigitizer(handle),"CloseDigitizer");
 
