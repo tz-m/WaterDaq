@@ -372,25 +372,25 @@ int main(int argc, char ** argv)
 
     for (int ch = 0; ch < 8; ch++)
     {
-        DPPParams.thr[ch] = 50;// discriminator threshold (LSB)
+        DPPParams.thr[ch] = 250;// discriminator threshold (LSB)
         DPPParams.k[ch] = 6000;// trap rise time (ns)
         DPPParams.m[ch] = 1000;// trap flat top (ns)
         DPPParams.M[ch] = 115000;// Exponential decay time of the preamp (ns)
-        DPPParams.ftd[ch] = static_cast<int>(0.8*DPPParams.m[ch]);// flat top delay ("PEAKING TIME"), 80% of flat top is a good value
+        DPPParams.ftd[ch] = static_cast<int>(0.4*DPPParams.m[ch]);// flat top delay ("PEAKING TIME"), 80% of flat top is a good value
         DPPParams.a[ch] = 0x8;// RC-CR2 smoothing factor
         DPPParams.b[ch] = 104;//input rise time (ns)
         DPPParams.trgho[ch] = 200;// Trigger hold-off
-        DPPParams.nsbl[ch] = 4;// Num samples in baseline averaging, 0b11 = 256 samples (512ns)
-        DPPParams.nspk[ch] = 2;// peak mean 0x2 = 0b10 corresponds to 16 samples
+        DPPParams.nsbl[ch] = 3;// Num samples in baseline averaging, 0b11 = 256 samples (512ns)
+        DPPParams.nspk[ch] = 3;// peak mean 0x2 = 0b10 corresponds to 16 samples
         DPPParams.pkho[ch] = 960;// peak hold-off
         DPPParams.blho[ch] = 8000;// baseline hold-off
         DPPParams.enf[ch] = 1.0;// energy normalisation factor
         DPPParams.decimation[ch] = 0;
         DPPParams.dgain[ch] = 0;
         DPPParams.otrej[ch] = 0;
-        DPPParams.trgwin[ch] = 1;// enable/disable rise time discriminator
-        DPPParams.twwdt[ch] = 144;// rise time validation window
-        MoreChanParams.InputDynamicRange[ch] = 0;
+        DPPParams.trgwin[ch] = 0;// enable/disable rise time discriminator
+        DPPParams.twwdt[ch] = 104;// rise time validation window
+        MoreChanParams.InputDynamicRange[ch] = 1;
         MoreChanParams.PreTriggerSize[ch] = 1000;
         MoreChanParams.ChannelDCOffset[ch] = static_cast<int>((1-0.1)*0xFFFF);// use formula (1 - percent_offset)*0xFFFF where percent_offset is the place you want the baseline within the full range, e.g. 0.2 for 20%
     }
@@ -422,8 +422,12 @@ int main(int argc, char ** argv)
     boardcfg |= MoreChanParams.DigVirtProbe2 << 26;
     fs << "Board Configuration: " << boardcfg << " (" << std::hex << boardcfg.to_ulong() << std::dec << ")" << std::endl;
 
-
-    CheckErrorCode(CAEN_DGTZ_OpenDigitizer(Params.LinkType,0,0,Params.VMEBaseAddress,&handle),"OpenDigitizer");
+    CAEN_DGTZ_ErrorCode ret = CAEN_DGTZ_OpenDigitizer(Params.LinkType,0,0,Params.VMEBaseAddress,&handle);
+    if (ret == -1L)// If a CommError, try again with different USB link number. It seems to switch between 0 and 1 depending on unknown factors.
+      {
+        ret = CAEN_DGTZ_OpenDigitizer(Params.LinkType,1,0,Params.VMEBaseAddress,&handle);
+      }
+    CheckErrorCode(ret,"OpenDigitizer");// If there is still an error, crash gracefully.
 
     CAEN_DGTZ_BoardInfo_t BoardInfo;
     CheckErrorCode(CAEN_DGTZ_GetInfo(handle,&BoardInfo),"GetInfo");
@@ -457,31 +461,35 @@ int main(int argc, char ** argv)
     CheckErrorCode(CAEN_DGTZ_SetChannelEnableMask(handle, Params.ChannelMask),"SetChannelEnableMask");
     CheckErrorCode(CAEN_DGTZ_SetRunSynchronizationMode(handle, CAEN_DGTZ_RUN_SYNC_Disabled),"SetRunSynchronizationMode");
     CheckErrorCode(CAEN_DGTZ_SetDPPParameters(handle, Params.ChannelMask, &DPPParams),"SetDPPParameters");
+    CheckErrorCode(CAEN_DGTZ_WriteRegister(handle, 0x817C, 1),"WriteEnableExternalTrigger");
 
     // Global Trigger Mask
     CheckErrorCode(CAEN_DGTZ_ReadRegister(handle, 0x810C, &value),"ReadRegister(0x810C)");
     //value |= 1UL << 30;// Enable external trigger
-    //value &= ~(1UL << 31);// Disable software trigger
+    value &= ~(1UL << 30);//Disable external trigger
+    value &= ~(1UL << 31);// Disable software trigger
+    value &= ~(1UL << 0);// Channels 0 and 1 do not contribute to global trigger generation
     //value |= 1UL << 0;// Channels 0 and 1 contribute to global trigger generation
-    value |= 1UL << 27;// Supposedly set TRG-IN as gate. says so in the DT5730 manual, but absent in the DPP-PHA registers document.
-    //value |= 100 << 20;// Set coincidence window
+    //value |= 1UL << 27;// Supposedly set TRG-IN as gate. says so in the DT5730 manual, but absent in the DPP-PHA registers document.
+    //value |= 30 << 20;// Set coincidence window
+    //value |= 1UL << 24;// set majority level
     CheckErrorCode(CAEN_DGTZ_WriteRegister(handle, 0x810C, value),"WriteRegister(0x810C)");
 
     // Front Panel I/O Control
     CheckErrorCode(CAEN_DGTZ_ReadRegister(handle, 0x811C, &value),"ReadRegister(0x811C)");
-    value |= 1UL << 10;// Trigger is synchronized with the whole duration of the TRG-IN signal
+    //value |= 1UL << 10;// Trigger is synchronized with the whole duration of the TRG-IN signal
     //value &= ~(1UL << 11);// Trig in processed by motherboard then sent to mezzanines
-    //value |= 1UL << 11;// Trig in sent directly to mazzanines
+    value |= 1UL << 11;// Trig in sent directly to mazzanines
     CheckErrorCode(CAEN_DGTZ_WriteRegister(handle, 0x811C, value),"WriteRegister(0x811C");
-
-    // Enable/Disable External Trigger
-    CheckErrorCode(CAEN_DGTZ_WriteRegister(handle, 0x817C, 0),"WriteEnableExternalTrigger");
 
     // Trigger Validation Mask
     CheckErrorCode(CAEN_DGTZ_ReadRegister(handle, 0x8180, &value),"ReadTriggerValidationMask_Couple0");
-    //value |= 1UL << 0;// Enable couple 0 trigger validation signal
-    //value &= ~(1UL << 9); value |= 1UL << 8;// Set trigger validation AND
-    //value |= 1UL << 30;// External trigger creates validation signal
+    value |= 1UL << 0;// Enable couple 0 trigger validation signal
+    value &= ~(1UL << 9); value |= 1UL << 8;// Set trigger validation AND
+    //value &= ~(1UL << 9); value &= ~(1UL << 8);// set trigger validation OR
+    //value |= 1UL << 9; value &= ~(1UL << 8);//Set trigger validation majority
+    //value |= 1 << 10;// Set majority level
+    value |= 1UL << 30;// External trigger creates validation signal
     CheckErrorCode(CAEN_DGTZ_WriteRegister(handle, 0x8180, value),"WriteTriggerValidationMask_Couple0");
 
     for (uint32_t i = 0; i < 8; i++)
@@ -494,22 +502,22 @@ int main(int argc, char ** argv)
             // DPP Algorithm Control
             CheckErrorCode(CAEN_DGTZ_ReadRegister(handle, 0x1080+i*0x100, &value),"ReadRegister(0x1080)");
             //value |= 1UL << 24;// Disable self trigger
-            value &= ~(1UL << 24);// Enable self trigger
-            //value &= ~(1UL << 19); value |= 1UL << 18;// Enable coincidence mode
+            //value &= ~(1UL << 24);// Enable self trigger
+            value &= ~(1UL << 19); value |= 1UL << 18;// Enable coincidence mode
             value |= 1UL << 27;// Readout pile-up events
             CheckErrorCode(CAEN_DGTZ_WriteRegister(handle, 0x1080+i*0x100, value),"WriteRegister(0x1080)");
 
             // DPP Algorithm Control 2
             CheckErrorCode(CAEN_DGTZ_ReadRegister(handle, 0x10A0+i*0x100, &value),"ReadDPPAlg2");
-            value |= 1UL << 29;// Enable BLR optimization
-            //test all of these again, put them in the wrong register before...
+            //value |= 1UL << 29;// Enable BLR optimization
             //value &= ~(1UL << 2);// Disable local shaped trigger
-            //value |= 1UL << 2;// Enable local shaped trigger
-            //value |= 1UL << 0; value |= 1UL << 1; // set local shaped trigger mode OR
-            //value &= ~(1UL << 5); value |= 1UL << 4;// Set trig validation mode Motherboard
+            value |= 1UL << 2;// Enable local shaped trigger
+            value |= 1UL << 0; value |= 1UL << 1; // set local shaped trigger mode OR
+            //value &= ~(1UL << 1); value &= ~(1UL << 0);// set local shaped trigger mode AND
+            value &= ~(1UL << 5); value |= 1UL << 4;// Set trig validation mode Motherboard
             //value |= 1UL << 5; value &= ~(1UL << 4);// Set trig validation mode AND
-            //value |= 1UL << 5; value |= 1UL << 4;   // Set trig validation mode OR
-            //value |= 1UL << 6;// Enable local trigger validation mode
+            //value |= 1UL << 5; value |= 1UL << 4;// Set trig validation mode OR
+            value |= 1UL << 6;// Enable local trigger validation mode
             //value &= ~(1UL << 6);// Disable local trigger validation mode)
             CheckErrorCode(CAEN_DGTZ_WriteRegister(handle, 0x10A0+i*0x100, value),"WriteDPPAlg2");
 
@@ -517,7 +525,7 @@ int main(int argc, char ** argv)
             CheckErrorCode(CAEN_DGTZ_WriteRegister(handle, 0x1028+i*0x100, MoreChanParams.InputDynamicRange[i]),"SetInputDynamicRange");
 
             // set shaped trigger width
-            CheckErrorCode(CAEN_DGTZ_WriteRegister(handle, 0x1084+i*0x100, 6000),"WriteShapedTriggerWidth");
+            CheckErrorCode(CAEN_DGTZ_WriteRegister(handle, 0x1084+i*0x100, 40),"WriteShapedTriggerWidth");
         }
     }
     CheckErrorCode(CAEN_DGTZ_SetDPPEventAggregation(handle, Params.EventAggr, 0),"SetDPPEventAggregation");
@@ -714,6 +722,9 @@ int main(int argc, char ** argv)
         if (BufferSize == 0) continue;
         Nb += BufferSize;
         CheckErrorCode(CAEN_DGTZ_GetDPPEvents(handle, buffer, BufferSize, reinterpret_cast<void**>(Events), NumEvents),"GetDPPEvents");
+        //uint64_t time0 = Events[0][0].TimeTag, time1 = Events[1][0].TimeTag;
+        //int sign = (time0 > time1) ? 1 : -1;
+        //std::cout << "time0=" << time0-time0 << ", time1=" << sign*static_cast<int>(std::max(time0,time1)-std::min(time0,time1)) << std::endl;
         for (int ch = 0; ch < 8; ch++)
         {
             if (!(Params.ChannelMask & (1<<ch))) continue;
@@ -722,6 +733,7 @@ int main(int argc, char ** argv)
             {
                 trgCnt[ch]++;
                 uint32_t energy = Events[ch][ev].Energy;
+                //uint64_t timetag = Events[ch][ev].TimeTag;
                 //int16_t extras = Events[ch][ev].Extras;
                 //uint32_t extras2 = Events[ch][ev].Extras2;
                 if (energy > static_cast<uint32_t>(DPPParams.thr[ch]) && energy < std::pow(2,14)-1)
@@ -734,7 +746,7 @@ int main(int argc, char ** argv)
                 {
                     purCnt[ch]++;
                 }
-                if (disp && ev == 0 /*&& energy > static_cast<uint32_t>(DPPParams.thr[ch]) && energy < std::pow(2,14)-1*/)
+                if (disp && ev == 0 && energy > static_cast<uint32_t>(DPPParams.thr[ch]) && energy < std::pow(2,14)-1)
                 {
                     int size;
                     std::vector<Int_t> time_x;
