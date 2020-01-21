@@ -42,6 +42,7 @@ typedef struct {
   uint32_t PreTriggerSize[8];
   uint32_t ChannelDCOffset[8];
   CAEN_DGTZ_PulsePolarity_t PulsePolarity[8];
+  uint32_t ShapedTrigWidth[8];
 
   // Board Configuration Parmeters 0x8000
   uint32_t AutoDataFlush;
@@ -227,6 +228,33 @@ int main(int argc, char ** argv)
   bool disp = false;
   char* dispopt;
   uint32_t w, x, y, z;
+  //double t_min=0, t_max=20000, vert_min=-8192, vert_max=16384;
+  std::vector<std::string> axes_lim_input;
+  std::vector<double> axes_lim = {0,-8192,20000,16384};
+  if (cmdOptionExists(tapp.Argv(),tapp.Argv()+tapp.Argc(),"-axes"))
+    {
+      // force axis drawing ranges
+      char * result = getCmdOption(tapp.Argv(),tapp.Argv()+tapp.Argc(),"-axes");
+      if (result == nullptr)
+        {
+          std::cout << "Provide axes limits." << std::endl;
+          std::cout << "Usage: ./DPPDaq -axes [xmin],[ymin],[xmax],[ymax]" << std::endl;
+          std::cout << "    Note: no spaces between values, e.g. 0,-8192,20000,16384" << std::endl;
+          std::cout << "    Note 2: This functionality is not very well tested for safety. I.e. DON'T GET IT WRONG because it will most likely crash, or worse, give bad information." << std::endl;
+          return -1;
+        }
+      char *token;
+      while ((token = strsep(&result, ","))) axes_lim_input.push_back(token);
+      std::cout << axes_lim_input[0] << "," << axes_lim_input[1] << "," << axes_lim_input[2] << "," << axes_lim_input[3] << std::endl;
+      for (size_t i = 0; i < axes_lim_input.size(); ++i)
+        {
+          if (axes_lim_input[i]!="")
+            {
+              axes_lim[i] = std::stod(axes_lim_input[i]);
+            }
+        }
+      //t_min = std::stod(axes_lim[0]); vert_min = std::stod(axes_lim[1]); t_max = std::stod(axes_lim[2]); vert_max = std::stod(axes_lim[3]);
+    }
   if (cmdOptionExists(tapp.Argv(),tapp.Argv()+tapp.Argc(),"-t"))
     {
       // time the run
@@ -277,59 +305,62 @@ int main(int argc, char ** argv)
       if (dispopt[3] == '0') z = static_cast<uint32_t>(dispopt[3]-'0');
 
       disp = true;
-      std::cout << "Display histograms and traces using options " << dispopt << std::endl;
+      std::cout << "Display histograms and traces using options " << dispopt << " and axis limits " << axes_lim[0] << "," << axes_lim[1] << "," << axes_lim[2] << "," << axes_lim[3] << "." << std::endl;
     }
 
   std::string w_name, x_name, y_name, z_name;
-  switch(w)
+  if (disp)
     {
-    case 0: w_name = "Input"; break;
-    case 1: w_name = "RC-CR"; break;
-    case 2: w_name = "RC-CR2"; break;
-    case 3: w_name = "Trapezoid"; break;
-    default:
-      std::cout << "Unknown display option w=" << w << ". Please try something else." << std::endl << usage.str();
-      return -1;
-      break;
-    }
-  switch(x)
-    {
-    case 0: x_name = "Input"; break;
-    case 1: x_name = "Threshold"; break;
-    case 2: x_name = "Trapezoid-Baseline"; break;
-    case 3: x_name = "Baseline"; break;
-    default:
-      std::cout << "Unknown display option x=" << x << ". Please try something else." << std::endl << usage.str();
-      return -1;
-      break;
-    }
-  switch (y)//0=Peaking, 1=Armed, 2=Peak Run, 3=Pile-up, 4=Peaking, 5=Trg Validation Window, 6=Baseline Freeze, 7=Trg Holdoff, 8=Trg Validation, 9=Acq Busy, a=Zero Cross Window, b=Ext Trg, c=Busy
-    {
-    case 0: y_name = "Peaking"; break;
-    case 1: y_name = "Armed"; break;
-    case 2: y_name = "Peak Run"; break;
-    case 3: y_name = "Pile-up"; break;
-    case 4: y_name = "Peaking"; break;
-    case 5: y_name = "Trigger Validation Window"; break;
-    case 6: y_name = "Baseline Freeze"; break;
-    case 7: y_name = "Trigger Holdoff"; break;
-    case 8: y_name = "Trigger Validation"; break;
-    case 9: y_name = "Acquisition Busy"; break;
-    case 10: y_name = "Zero Crossing Window"; break;
-    case 11: y_name = "External Trigger"; break;
-    case 12: y_name = "Busy"; break;
-    default:
-      std::cout << "Unknown display option y=" << y << ". Please try something else." << std::endl << usage.str();
-      return -1;
-      break;
-    }
-  switch (z)// 0=Trigger
-    {
-    case 0: z_name = "Trigger"; break;
-    default:
-      std::cout << "Unknown display option z=" << z << ". Please try something else." << std::endl << usage.str();
-      return -1;
-      break;
+      switch(w)
+        {
+        case 0: w_name = "Input"; break;
+        case 1: w_name = "RC-CR"; break;
+        case 2: w_name = "RC-CR2"; break;
+        case 3: w_name = "Trapezoid"; break;
+        default:
+          std::cout << "Unknown display option w=" << w << ". Please try something else." << std::endl << usage.str();
+          return -1;
+          break;
+        }
+      switch(x)
+        {
+        case 0: x_name = "Input"; break;
+        case 1: x_name = "Threshold"; break;
+        case 2: x_name = "Trapezoid-Baseline"; break;
+        case 3: x_name = "Baseline"; break;
+        default:
+          std::cout << "Unknown display option x=" << x << ". Please try something else." << std::endl << usage.str();
+          return -1;
+          break;
+        }
+      switch (y)//0=Peaking, 1=Armed, 2=Peak Run, 3=Pile-up, 4=Peaking, 5=Trg Validation Window, 6=Baseline Freeze, 7=Trg Holdoff, 8=Trg Validation, 9=Acq Busy, a=Zero Cross Window, b=Ext Trg, c=Busy
+        {
+        case 0: y_name = "Peaking"; break;
+        case 1: y_name = "Armed"; break;
+        case 2: y_name = "Peak Run"; break;
+        case 3: y_name = "Pile-up"; break;
+        case 4: y_name = "Peaking"; break;
+        case 5: y_name = "Trigger Validation Window"; break;
+        case 6: y_name = "Baseline Freeze"; break;
+        case 7: y_name = "Trigger Holdoff"; break;
+        case 8: y_name = "Trigger Validation"; break;
+        case 9: y_name = "Acquisition Busy"; break;
+        case 10: y_name = "Zero Crossing Window"; break;
+        case 11: y_name = "External Trigger"; break;
+        case 12: y_name = "Busy"; break;
+        default:
+          std::cout << "Unknown display option y=" << y << ". Please try something else." << std::endl << usage.str();
+          return -1;
+          break;
+        }
+      switch (z)// 0=Trigger
+        {
+        case 0: z_name = "Trigger"; break;
+        default:
+          std::cout << "Unknown display option z=" << z << ". Please try something else." << std::endl << usage.str();
+          return -1;
+          break;
+        }
     }
 
   std::string thisTimeString = MakeTimeString();
@@ -368,9 +399,9 @@ int main(int argc, char ** argv)
   Params.AcqMode = CAEN_DGTZ_DPP_ACQ_MODE_List;
   if (disp) Params.AcqMode = CAEN_DGTZ_DPP_ACQ_MODE_Mixed;
   Params.RecordLength = 10000;// Number of samples at 2ns per sample
-  Params.ChannelMask = (1<<0) + (1<<1) + (1<<2) + (0<<3) + (0<<4) + (0<<5) + (0<<6) + (0<<7); // {1=enable, 0=disable} << =left.bit.shift {channel number}
+  Params.ChannelMask = (1<<0) + (0<<1) + (1<<2) + (0<<3) + (1<<4) + (0<<5) + (0<<6) + (0<<7); // {1=enable, 0=disable} << =left.bit.shift {channel number}
   Params.EventAggr = 0;//0 = automatic
-  Params.PulsePolarity = CAEN_DGTZ_PulsePolarityPositive;
+   Params.PulsePolarity = CAEN_DGTZ_PulsePolarityPositive;
 
   for (int ch = 0; ch < 8; ch++)
     {
@@ -394,14 +425,23 @@ int main(int argc, char ** argv)
       DPPParams.trgwin[ch] = 0;// enable/disable rise time discriminator
       DPPParams.twwdt[ch] = 104;// rise time validation window
       MoreChanParams.InputDynamicRange[ch] = 1;
-      MoreChanParams.PreTriggerSize[ch] = 1000;
+      MoreChanParams.PreTriggerSize[ch] = 2000;// ns
       MoreChanParams.ChannelDCOffset[ch] = static_cast<int>((1-0.1)*0xFFFF);// use formula (1 - percent_offset)*0xFFFF where percent_offset is the place you want the baseline within the full range, e.g. 0.2 for 20%
       MoreChanParams.PulsePolarity[ch] = CAEN_DGTZ_PulsePolarityPositive;
-      if (ch == 2)
+      MoreChanParams.ShapedTrigWidth[ch] = 12;
+      if (ch == 4)
         {// external trigger into ch2
-          DPPParams.trgho[ch] = 2000;
+          //DPPParams.k[ch] = 1000;
+          //DPPParams.m[ch] = 100;
+          //DPPParams.nspk[ch] = 0;
+          DPPParams.trgho[ch] = 8000;
           MoreChanParams.InputDynamicRange[ch] = 0;
           MoreChanParams.PulsePolarity[ch] = CAEN_DGTZ_PulsePolarityNegative;
+          MoreChanParams.ChannelDCOffset[ch] = static_cast<int>((1-0.9)*0xFFFF);
+          //DPPParams.b[ch] = 106;
+          DPPParams.M[ch] = 512000;
+          DPPParams.pkho[ch] = 200;
+          MoreChanParams.ShapedTrigWidth[ch] = 88;
         }
     }
 
@@ -489,24 +529,33 @@ int main(int argc, char ** argv)
   CheckErrorCode(CAEN_DGTZ_ReadRegister(handle, 0x811C, &value),"ReadRegister(0x811C)");
   //value |= 1UL << 10;// Trigger is synchronized with the whole duration of the TRG-IN signal
   //value &= ~(1UL << 11);// Trig in processed by motherboard then sent to mezzanines
-  value |= 1UL << 11;// Trig in sent directly to mazzanines
+  value |= 1UL << 11;// Trig in sent directly to mezzanines
   CheckErrorCode(CAEN_DGTZ_WriteRegister(handle, 0x811C, value),"WriteRegister(0x811C");
 
   // Trigger Validation Mask
   CheckErrorCode(CAEN_DGTZ_ReadRegister(handle, 0x8180, &value),"ReadTriggerValidationMask_Couple0");
   value |= 1UL << 0;// Enable couple 0 trigger validation signal
+  //value |= 1UL << 1;// same couple 1
+  value |= 1UL << 2;// same couple 2
   value &= ~(1UL << 9); value |= 1UL << 8;// Set trigger validation AND
   //value &= ~(1UL << 9); value &= ~(1UL << 8);// set trigger validation OR
   //value |= 1UL << 9; value &= ~(1UL << 8);//Set trigger validation majority
   //value |= 1 << 10;// Set majority level
   value |= 1UL << 30;// External trigger creates validation signal
   CheckErrorCode(CAEN_DGTZ_WriteRegister(handle, 0x8180, value),"WriteTriggerValidationMask_Couple0");
+  value = 0;
+  value |= 1UL << 1;
+  value |= 1UL << 2;
+  value &= ~(1UL << 9); value |= 1UL << 8;
+  value |= 1UL << 30;
+  CheckErrorCode(CAEN_DGTZ_WriteRegister(handle, 0x8184, value),"WriteTriggerValidationMask_Couple1");
+  CheckErrorCode(CAEN_DGTZ_WriteRegister(handle, 0x8110, value),"WriteGPOMask");
 
   for (uint32_t i = 0; i < 8; i++)
     {
       if (Params.ChannelMask & (1<<i)) {
           CheckErrorCode(CAEN_DGTZ_SetChannelDCOffset(handle, i, MoreChanParams.ChannelDCOffset[i]),"SetChannelDCOffset");
-          CheckErrorCode(CAEN_DGTZ_SetDPPPreTriggerSize(handle, static_cast<int>(i), MoreChanParams.PreTriggerSize[i]),"SetDPPPreTriggerSize");
+          CheckErrorCode(CAEN_DGTZ_SetDPPPreTriggerSize(handle, static_cast<int>(i), MoreChanParams.PreTriggerSize[i]/2),"SetDPPPreTriggerSize");
           CheckErrorCode(CAEN_DGTZ_SetChannelPulsePolarity(handle, i, MoreChanParams.PulsePolarity[i]),"SetChannelPulsePolarity");
 
           // DPP Algorithm Control
@@ -514,7 +563,7 @@ int main(int argc, char ** argv)
           //value |= 1UL << 24;// Disable self trigger
           //value &= ~(1UL << 24);// Enable self trigger
           value &= ~(1UL << 19); value |= 1UL << 18;// Enable coincidence mode
-          value |= 1UL << 27;// Readout pile-up events
+          //value |= 1UL << 27;// Readout pile-up events
           CheckErrorCode(CAEN_DGTZ_WriteRegister(handle, 0x1080+i*0x100, value),"WriteRegister(0x1080)");
 
           // DPP Algorithm Control 2
@@ -522,8 +571,9 @@ int main(int argc, char ** argv)
           //value |= 1UL << 29;// Enable BLR optimization
           //value &= ~(1UL << 2);// Disable local shaped trigger
           value |= 1UL << 2;// Enable local shaped trigger
-          value |= 1UL << 0; value |= 1UL << 1; // set local shaped trigger mode OR
+          //value |= 1UL << 0; value |= 1UL << 1; // set local shaped trigger mode OR
           //value &= ~(1UL << 1); value &= ~(1UL << 0);// set local shaped trigger mode AND
+          value &= ~(1UL << 1); value |= 1UL << 0;// set local shaped trigger mode even channel of the couple
           value &= ~(1UL << 5); value |= 1UL << 4;// Set trig validation mode Motherboard
           //value |= 1UL << 5; value &= ~(1UL << 4);// Set trig validation mode AND
           //value |= 1UL << 5; value |= 1UL << 4;// Set trig validation mode OR
@@ -536,7 +586,7 @@ int main(int argc, char ** argv)
           CheckErrorCode(CAEN_DGTZ_WriteRegister(handle, 0x1028+i*0x100, MoreChanParams.InputDynamicRange[i]),"SetInputDynamicRange");
 
           // set shaped trigger width
-          CheckErrorCode(CAEN_DGTZ_WriteRegister(handle, 0x1084+i*0x100, 40),"WriteShapedTriggerWidth");
+          CheckErrorCode(CAEN_DGTZ_WriteRegister(handle, 0x1084+i*0x100, MoreChanParams.ShapedTrigWidth[i]),"WriteShapedTriggerWidth");
         }
     }
   CheckErrorCode(CAEN_DGTZ_SetDPPEventAggregation(handle, Params.EventAggr, 0),"SetDPPEventAggregation");
@@ -580,7 +630,7 @@ int main(int argc, char ** argv)
           CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x1064+i*0x100,&value),"ReadPeakingTimeChannelI");
           fs << "Ch" << i << " Peaking Time: " << value*8 << " ns" << std::endl;
           CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x1068+i*0x100,&value),"ReadDecayTimeChannelI");
-          fs << "Ch" << i << " Decay Time: " << value*8/1000 << " microseconds" << std::endl;
+          fs << "Ch" << i << " Decay Time: " << static_cast<double>(value)*0.008 << " microseconds" << std::endl;
           CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x106C+i*0x100,&value),"ReadTriggerThresholdChannelI");
           fs << "Ch" << i << " Trig Threshold: " << value << " LSB (threshold in mV = {LSB}*Vpp/ADC_Nbits)" << std::endl;
           CheckErrorCode(CAEN_DGTZ_ReadRegister(handle,0x1070+i*0x100,&value),"ReadRiseTimeValidationWindowChannelI");
@@ -704,10 +754,6 @@ int main(int argc, char ** argv)
 
   CheckErrorCode(CAEN_DGTZ_SWStartAcquisition(handle),"SWStartAcquisition");
 
-  auto start_tp = std::chrono::system_clock::now();
-  TVectorD starttimevec = MakeTimeVec(start_tp);
-  auto PrevRateTime = start_tp;
-
   int i_evt = 0;
   long int i_sec = 0;
   std::unordered_map<int,int> chan_pulses;
@@ -718,6 +764,7 @@ int main(int argc, char ** argv)
   std::unordered_map<int,std::shared_ptr<TCanvas>> canv_wf_map;
   std::unordered_map<int,std::shared_ptr<TCanvas>> canv_hist_map;
 
+  int num_enabled_channels = 0;
   for (int ch = 0; ch < 8; ch++)
     {
       if (!(Params.ChannelMask & (1<<ch))) continue;
@@ -727,7 +774,12 @@ int main(int argc, char ** argv)
           canv_hist_map[ch] = std::make_shared<TCanvas>((static_cast<std::string>("hist_ch")+std::to_string(ch)).c_str(),"",1600,900);
         }
       h_map[ch] = std::make_shared<TH1I>((static_cast<std::string>("h_ch")+std::to_string(ch)).c_str(),";ADC Channel;",16384,0,16384);
+      num_enabled_channels++;
     }
+
+  auto start_tp = std::chrono::system_clock::now();
+  TVectorD starttimevec = MakeTimeVec(start_tp);
+  auto PrevRateTime = start_tp;
 
   while(keep_continue)
     {
@@ -735,150 +787,185 @@ int main(int argc, char ** argv)
       if (BufferSize == 0) continue;
       Nb += BufferSize;
       CheckErrorCode(CAEN_DGTZ_GetDPPEvents(handle, buffer, BufferSize, reinterpret_cast<void**>(Events), NumEvents),"GetDPPEvents");
-      uint64_t time0 = Events[0][0].TimeTag, time1 = Events[1][0].TimeTag, time2 = Events[2][0].TimeTag;
-      uint32_t extras2_0 = Events[0][0].Extras2, extras2_1 = Events[1][0].Extras2, extras2_2 = Events[2][0].Extras2;
-      //int sign = (time0 > time1) ? 1 : -1;
-      //std::cout << "time0=" << time0-time0 << ", time1=" << sign*static_cast<int>(std::max(time0,time1)-std::min(time0,time1)) << std::endl;
-      std::cout << "time0=" << time0 << ", time1=" << time1 << ", time2=" << time2 <<
-                   ", ExTS0=" << ExtractBits(extras2_0,16,16) << ", ExTS1=" << ExtractBits(extras2_1,16,16) << ", ExTS2=" << ExtractBits(extras2_2,16,16) <<
-                   ", FTS0=" << ExtractBits(extras2_0,16,0) << ", FTS1=" << ExtractBits(extras2_1,16,0) << ", FTS2=" << ExtractBits(extras2_2,16,0) << std::endl;
+
+
+      std::unordered_map<uint32_t,int> filled_events;
+      std::unordered_map<uint32_t,std::unordered_map<int,CAEN_DGTZ_DPP_PHA_Event_t>> reinterpret_Events;
+
+      std::cout << "This Loop: ch0 events = " << NumEvents[0] << " ch2 events = " << NumEvents[2] << " ch4 events = " << NumEvents[4] << std::endl;
+
       for (int ch = 0; ch < 8; ch++)
         {
           if (!(Params.ChannelMask & (1<<ch))) continue;
 
+          uint32_t energy;
           for (uint32_t ev = 0; ev < NumEvents[ch]; ev++)
             {
+              if (filled_events.find(ev) == filled_events.end())
+                {
+                  filled_events.insert(std::make_pair(ev,0));
+                }
+              CAEN_DGTZ_DPP_PHA_Event_t thisevent;
+              thisevent.Energy = Events[ch][ev].Energy;
+              thisevent.Extras = Events[ch][ev].Extras;
+              thisevent.Extras2 = Events[ch][ev].Extras2;
+              thisevent.Format = Events[ch][ev].Format;
+              thisevent.TimeTag = Events[ch][ev].TimeTag;
+              thisevent.Waveforms = Events[ch][ev].Waveforms;
+              reinterpret_Events[ev][ch] = thisevent;
               trgCnt[ch]++;
-              uint32_t energy = Events[ch][ev].Energy;
+              energy = Events[ch][ev].Energy;
               //uint64_t timetag = Events[ch][ev].TimeTag;
               //int16_t extras = Events[ch][ev].Extras;
               //uint32_t extras2 = Events[ch][ev].Extras2;
-              if ((energy > static_cast<uint32_t>(DPPParams.thr[ch]) && energy < std::pow(2,14)-1) || ch == 2)
+              if ((energy > static_cast<uint32_t>(DPPParams.thr[ch]) && energy < std::pow(2,14)-1))
                 {
                   h_map[ch]->Fill(energy);
                   chan_pulses[ch]++;
+                  filled_events[ev]++;
                 }
               else
                 {
                   purCnt[ch]++;
                 }
-              if ((disp && ev == 0 && energy > static_cast<uint32_t>(DPPParams.thr[ch]) && energy < std::pow(2,14)-1) ||
-                  (disp && ev == 0 && ch == 2))
+            }
+
+          if (disp && energy > static_cast<uint32_t>(DPPParams.thr[ch]) && energy < std::pow(2,14)-1)
+            {
+              int size;
+              std::vector<Int_t> time_x;
+              int16_t *WaveLine_an1;
+              int16_t *WaveLine_an2;
+              uint8_t *DigitalWaveLine_d1;
+              uint8_t *DigitalWaveLine_d2;
+
+              std::vector<Int_t> WL_an1, WL_an2, DWL_d1, DWL_d2;
+
+              CheckErrorCode(CAEN_DGTZ_DecodeDPPWaveforms(handle, &Events[ch][0], Waveform),"DecodeDPPWaveforms");
+
+              // Use waveform data here...
+              size = static_cast<int>(Waveform->Ns); // Number of samples
+
+              WaveLine_an1 = Waveform->Trace1; // First trace (ANALOG_TRACE_1)
+              WaveLine_an2 = Waveform->Trace2; // Second Trace ANALOG_TRACE_2 (if single trace mode, it is a sequence of zeroes)
+              DigitalWaveLine_d1 = Waveform->DTrace1; // First Digital Trace (DIGITALPROBE1)
+              DigitalWaveLine_d2 = Waveform->DTrace2; // Second Digital Trace (for DPP-PHA it is ALWAYS Trigger)
+
+              for (int pt = 0; pt < size; ++pt)
                 {
-                  int size;
-                  std::vector<Int_t> time_x;
-                  int16_t *WaveLine_an1;
-                  int16_t *WaveLine_an2;
-                  uint8_t *DigitalWaveLine_d1;
-                  uint8_t *DigitalWaveLine_d2;
-
-                  std::vector<Int_t> WL_an1, WL_an2, DWL_d1, DWL_d2;
-
-                  CheckErrorCode(CAEN_DGTZ_DecodeDPPWaveforms(handle, &Events[ch][ev], Waveform),"DecodeDPPWaveforms");
-
-                  // Use waveform data here...
-                  size = static_cast<int>(Waveform->Ns); // Number of samples
-
-                  WaveLine_an1 = Waveform->Trace1; // First trace (ANALOG_TRACE_1)
-                  WaveLine_an2 = Waveform->Trace2; // Second Trace ANALOG_TRACE_2 (if single trace mode, it is a sequence of zeroes)
-                  DigitalWaveLine_d1 = Waveform->DTrace1; // First Digital Trace (DIGITALPROBE1)
-                  DigitalWaveLine_d2 = Waveform->DTrace2; // Second Digital Trace (for DPP-PHA it is ALWAYS Trigger)
-
-                  for (int pt = 0; pt < size; ++pt)
-                    {
-                      time_x.push_back(pt*2);
-                      WL_an1.push_back(static_cast<Int_t>(WaveLine_an1[pt]));
-                      WL_an2.push_back(static_cast<Int_t>(WaveLine_an2[pt]));
-                      DWL_d1.push_back(static_cast<Int_t>(DigitalWaveLine_d1[pt]));
-                      DWL_d2.push_back(static_cast<Int_t>(DigitalWaveLine_d2[pt]));
-                    }
-
-                  canv_wf_map[ch]->cd();
-
-                  TGraph an1(size,time_x.data(),WL_an1.data());
-                  an1.SetTitle((static_cast<std::string>("Channel")+std::to_string(ch)+";Time (ns);ADC Value").c_str());
-                  an1.SetLineWidth(3);
-                  an1.SetLineColor(kBlack);
-                  an1.GetYaxis()->SetRangeUser(-8192,16384);
-                  //an1.GetYaxis()->SetRangeUser(-100,100);// To view threshold and baseline
-                  if (w==2) an1.GetXaxis()->SetRangeUser(0,4000);// To view RC-CR2 easier
-                  TGraph an2(size,time_x.data(),WL_an2.data());
-                  an2.SetTitle("");
-                  an2.SetLineWidth(3);
-                  an2.SetLineColor(kRed);
-                  an2.GetXaxis()->SetLabelSize(0);
-                  an2.GetXaxis()->SetTickLength(0);
-                  an2.GetYaxis()->SetLabelSize(0);
-                  an2.GetYaxis()->SetTickLength(0);
-                  an2.GetYaxis()->SetRangeUser(-8192,16384);
-                  //an2.GetYaxis()->SetRangeUser(-100,100);// To view threshold and baseline
-                  if (w==2) an2.GetXaxis()->SetRangeUser(0,4000);// To view RC-CR2 easier
-                  TGraph d1(size,time_x.data(),DWL_d1.data());
-                  d1.SetTitle("");
-                  d1.SetLineWidth(3);
-                  d1.SetLineColor(kBlue);
-                  d1.GetXaxis()->SetLabelSize(0);
-                  d1.GetXaxis()->SetTickLength(0);
-                  d1.GetYaxis()->SetLabelSize(0);
-                  d1.GetYaxis()->SetTickLength(0);
-                  //d1.GetYaxis()->SetRangeUser(-1,3);
-                  if (w==2) d1.GetXaxis()->SetRangeUser(0,4000);// To view RC-CR2 easier
-                  TGraph d2(size,time_x.data(),DWL_d2.data());
-                  d2.SetTitle("");
-                  d2.SetLineWidth(3);
-                  d2.SetLineColor(kGreen);
-                  d2.GetXaxis()->SetLabelSize(0);
-                  d2.GetXaxis()->SetTickLength(0);
-                  d2.GetYaxis()->SetLabelSize(0);
-                  d2.GetYaxis()->SetTickLength(0);
-                  //d2.GetYaxis()->SetRangeUser(-1,3);
-                  if (w==2) d2.GetXaxis()->SetRangeUser(0,4000);//To view RC-CR2 easier
-
-                  TPad pad1("pad_an1","",0,0,1,1);
-                  TPad pad2("pad_an2","",0,0,1,1);
-                  TPad pad3("pad_d1","",0,0,1,1);
-                  TPad pad4("pad_d2","",0,0,1,1);
-                  pad2.SetFillStyle(4000);
-                  pad2.SetFrameFillStyle(0);
-                  pad3.SetFillStyle(4000);
-                  pad3.SetFrameFillStyle(0);
-                  pad4.SetFillStyle(4000);
-                  pad4.SetFrameFillStyle(0);
-
-                  TLegend leg(0.7,0.7,0.9,0.9);
-                  leg.AddEntry(&an1,w_name.c_str(),"lf");
-                  leg.AddEntry(&an2,x_name.c_str(),"lf");
-                  leg.AddEntry(&d1,y_name.c_str(),"lf");
-                  leg.AddEntry(&d2,z_name.c_str(),"lf");
-                  //leg.Draw();
-
-                  pad1.Draw();
-                  pad1.cd();
-                  an1.Draw("al");
-                  leg.Draw();
-
-                  pad2.Draw();
-                  pad2.cd();
-                  an2.Draw("al");
-
-                  pad3.Draw();
-                  pad3.cd();
-                  d1.Draw("al");
-
-                  pad4.Draw();
-                  pad4.cd();
-                  d2.Draw("al");
-
-                  canv_wf_map[ch]->Modified();
-                  canv_wf_map[ch]->Update();
-
-                  canv_hist_map[ch]->cd();
-                  h_map[ch]->Draw();
-                  canv_hist_map[ch]->Modified();
-                  canv_hist_map[ch]->Update();
+                  time_x.push_back(pt*2);
+                  WL_an1.push_back(static_cast<Int_t>(WaveLine_an1[pt]));
+                  WL_an2.push_back(static_cast<Int_t>(WaveLine_an2[pt]));
+                  DWL_d1.push_back(static_cast<Int_t>(DigitalWaveLine_d1[pt]));
+                  DWL_d2.push_back(static_cast<Int_t>(DigitalWaveLine_d2[pt]));
                 }
+
+              canv_wf_map[ch]->cd();
+
+              TGraph an1(size,time_x.data(),WL_an1.data());
+              an1.SetTitle((static_cast<std::string>("Channel")+std::to_string(ch)+";Time (ns);ADC Value").c_str());
+              an1.SetLineWidth(3);
+              an1.SetLineColor(kBlack);
+              an1.GetYaxis()->SetRangeUser(axes_lim[1],axes_lim[3]);
+              an1.GetXaxis()->SetRangeUser(axes_lim[0],axes_lim[2]);
+              TGraph an2(size,time_x.data(),WL_an2.data());
+              an2.SetTitle("");
+              an2.SetLineWidth(3);
+              an2.SetLineColor(kRed);
+              an2.GetXaxis()->SetLabelSize(0);
+              an2.GetXaxis()->SetTickLength(0);
+              an2.GetYaxis()->SetLabelSize(0);
+              an2.GetYaxis()->SetTickLength(0);
+              an2.GetYaxis()->SetRangeUser(axes_lim[1],axes_lim[3]);
+              an2.GetXaxis()->SetRangeUser(axes_lim[0],axes_lim[2]);
+              TGraph d1(size,time_x.data(),DWL_d1.data());
+              d1.SetTitle("");
+              d1.SetLineWidth(3);
+              d1.SetLineColor(kBlue);
+              d1.GetXaxis()->SetLabelSize(0);
+              d1.GetXaxis()->SetTickLength(0);
+              d1.GetYaxis()->SetLabelSize(0);
+              d1.GetYaxis()->SetTickLength(0);
+              //d1.GetYaxis()->SetRangeUser(-3,3);
+              d1.GetXaxis()->SetRangeUser(axes_lim[0],axes_lim[2]);
+              TGraph d2(size,time_x.data(),DWL_d2.data());
+              d2.SetTitle("");
+              d2.SetLineWidth(3);
+              d2.SetLineColor(kGreen);
+              d2.GetXaxis()->SetLabelSize(0);
+              d2.GetXaxis()->SetTickLength(0);
+              d2.GetYaxis()->SetLabelSize(0);
+              d2.GetYaxis()->SetTickLength(0);
+              //d2.GetYaxis()->SetRangeUser(-1,3);
+              d2.GetXaxis()->SetRangeUser(axes_lim[0],axes_lim[2]);
+
+              TPad pad1("pad_an1","",0,0,1,1);
+              TPad pad2("pad_an2","",0,0,1,1);
+              TPad pad3("pad_d1","",0,0,1,1);
+              TPad pad4("pad_d2","",0,0,1,1);
+              pad2.SetFillStyle(4000);
+              pad2.SetFrameFillStyle(0);
+              pad3.SetFillStyle(4000);
+              pad3.SetFrameFillStyle(0);
+              pad4.SetFillStyle(4000);
+              pad4.SetFrameFillStyle(0);
+
+              TLegend leg(0.7,0.7,0.9,0.9);
+              leg.AddEntry(&an1,w_name.c_str(),"lf");
+              leg.AddEntry(&an2,x_name.c_str(),"lf");
+              leg.AddEntry(&d1,y_name.c_str(),"lf");
+              leg.AddEntry(&d2,z_name.c_str(),"lf");
+              //leg.Draw();
+
+              pad1.Draw();
+              pad1.cd();
+              an1.Draw("al");
+              leg.Draw();
+
+              pad2.Draw();
+              pad2.cd();
+              an2.Draw("al");
+
+              pad3.Draw();
+              pad3.cd();
+              d1.Draw("al");
+
+              pad4.Draw();
+              pad4.cd();
+              d2.Draw("al");
+
+              canv_wf_map[ch]->Modified();
+              canv_wf_map[ch]->Update();
+
+              canv_hist_map[ch]->cd();
+              h_map[ch]->Draw();
+              canv_hist_map[ch]->Modified();
+              canv_hist_map[ch]->Update();
             }
         }
+
+      int numfilled = 0;
+      for (auto fe : filled_events)
+        {
+          if (fe.second == num_enabled_channels)
+            {
+              numfilled++;
+              for (int ch = 0; ch < 8; ch++)
+                {
+                  if (!(Params.ChannelMask & (1<<ch))) continue;
+
+                }
+              uint64_t time0 = Events[0][fe.first].TimeTag, time1 = Events[2][fe.first].TimeTag, time2 = Events[4][fe.first].TimeTag;
+              uint32_t extras2_0 = Events[0][fe.first].Extras2, extras2_1 = Events[2][fe.first].Extras2, extras2_2 = Events[4][fe.first].Extras2;
+              uint16_t fine0 = ExtractBits(extras2_0,16,0), fine1 = ExtractBits(extras2_1,16,0), fine2 = ExtractBits(extras2_2,16,0);
+              uint64_t ts0 = time0+fine0, ts1 = time1+fine1, ts2 = time2+fine2;
+              //int sign0 = (ts0 > ts2) ? 1 : -1;
+              //int sign1 = (ts1 > ts2) ? 1 : -1;
+              //std::cout << "time0=" << time0-time0 << ", time1=" << sign*static_cast<int>(std::max(time0,time1)-std::min(time0,time1)) << std::endl;
+              //std::cout << "time0=" << sign0*static_cast<int>(std::max(ts0,ts2)-std::min(ts0,ts2))*2 << " ns, time1=" << sign1*static_cast<int>(std::max(ts1,ts2)-std::min(ts1,ts2))*2 << " ns" << std::endl;
+            }
+        }
+      std::cout << "numfilled=" << numfilled << std::endl;
 
       if (count_events > 0 && i_evt >= count_events) break;
       auto now_tp = std::chrono::system_clock::now();
