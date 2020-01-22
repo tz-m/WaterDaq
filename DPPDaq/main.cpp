@@ -27,6 +27,28 @@
 static volatile bool keep_continue = true;
 
 typedef struct {
+  uint32_t Format;
+  uint64_t TimeTag;
+  uint16_t Energy;
+  int16_t Extras;
+  uint32_t Extras2;
+  uint32_t ev;
+  int ch;
+  uint16_t fine_time;
+  uint16_t ETT_MSB;
+  uint64_t ETT;
+  int lost_event;
+  int rollover_event;
+  int fake_event;
+  int input_saturation;
+  int lost_trig;
+  int tot_trig;
+  int match_coinc;
+  int nomatch_coinc;
+  int tt_reset;
+} Ev_t;
+
+typedef struct {
   CAEN_DGTZ_ConnectionType LinkType;
   uint32_t VMEBaseAddress;
   uint32_t RecordLength;
@@ -211,6 +233,16 @@ bool cmdOptionExists(char** begin, char** end, const std::string& option)
 
 int main(int argc, char ** argv)
 {
+  std::stringstream setupnote;
+  setupnote << "NOTE: This code makes several assumptions about setup which must be satisfied for accurate results."
+            << " First, the AFG output of the scope must be set with the following parameters: Exponential Rise, Frequency 5kHz, Period 200 us, Amplitude 1.25 Vpp, Offset -1.25V."
+            << " The AFT output should be Tee'd three ways to the digitizer GPI, the LED pulser trigger input, and CH4 of the digitizer."
+            << " The GPI is required to reset the clock on each trigger, otherwise \"coincident\" events will not have sensible TimeTags."
+            << " The LED pulser gate width is set short, and the gate delay is set clockwise all the way."
+            << " The pulser gate bottom goes to TRG-IN on the digitizer."
+            << " Most importantly, the digitizer channel inputs should be set to CH0 and CH1 for the two input post-CSP PMT signals."
+            << std::endl;
+
   std::stringstream usage;
   usage << "Usage: ./DPPDaq -disp wxyz" << std::endl;
   usage << "   w: Analogue Trace 1 (0=Input, 1=RC-CR, 2=RC-CR2, 3=Trapezoid)" << std::endl;
@@ -371,6 +403,7 @@ int main(int argc, char ** argv)
   std::ofstream fs(configfilename.str());
 
   if (disp) fs << "Display options: " << dispopt << std::endl;
+  fs << setupnote.str();
 
   int handle;
 
@@ -396,24 +429,23 @@ int main(int argc, char ** argv)
   Params.IOlev = CAEN_DGTZ_IOLevel_NIM;
 
   //acquisition parameters
-  Params.AcqMode = CAEN_DGTZ_DPP_ACQ_MODE_List;
-  if (disp) Params.AcqMode = CAEN_DGTZ_DPP_ACQ_MODE_Mixed;
+  Params.AcqMode = CAEN_DGTZ_DPP_ACQ_MODE_Mixed;
   Params.RecordLength = 10000;// Number of samples at 2ns per sample
   Params.ChannelMask = (1<<0) + (0<<1) + (1<<2) + (0<<3) + (1<<4) + (0<<5) + (0<<6) + (0<<7); // {1=enable, 0=disable} << =left.bit.shift {channel number}
   Params.EventAggr = 0;//0 = automatic
-   Params.PulsePolarity = CAEN_DGTZ_PulsePolarityPositive;
+  Params.PulsePolarity = CAEN_DGTZ_PulsePolarityPositive;
 
   for (int ch = 0; ch < 8; ch++)
     {
       if (!(Params.ChannelMask & (1<<ch))) continue;
-      DPPParams.thr[ch] = 250;// discriminator threshold (LSB)
+      DPPParams.thr[ch] = 25;// discriminator threshold (LSB)
       DPPParams.k[ch] = 6000;// trap rise time (ns)
       DPPParams.m[ch] = 1000;// trap flat top (ns)
       DPPParams.M[ch] = (ch==0)?120000:115000;// Exponential decay time of the preamp (ns)
       DPPParams.ftd[ch] = static_cast<int>(0.4*DPPParams.m[ch]);// flat top delay ("PEAKING TIME"), 80% of flat top is a good value
       DPPParams.a[ch] = 0x8;// RC-CR2 smoothing factor
       DPPParams.b[ch] = 104;//input rise time (ns)
-      DPPParams.trgho[ch] = 200;// Trigger hold-off
+      DPPParams.trgho[ch] = 20000;// Trigger hold-off
       DPPParams.nsbl[ch] = 3;// Num samples in baseline averaging, 0b11 = 256 samples (512ns)
       DPPParams.nspk[ch] = 3;// peak mean 0x2 = 0b10 corresponds to 16 samples
       DPPParams.pkho[ch] = 960;// peak hold-off
@@ -424,23 +456,24 @@ int main(int argc, char ** argv)
       DPPParams.otrej[ch] = 0;
       DPPParams.trgwin[ch] = 0;// enable/disable rise time discriminator
       DPPParams.twwdt[ch] = 104;// rise time validation window
-      MoreChanParams.InputDynamicRange[ch] = 1;
+      MoreChanParams.InputDynamicRange[ch] = 0;
       MoreChanParams.PreTriggerSize[ch] = 2000;// ns
       MoreChanParams.ChannelDCOffset[ch] = static_cast<int>((1-0.1)*0xFFFF);// use formula (1 - percent_offset)*0xFFFF where percent_offset is the place you want the baseline within the full range, e.g. 0.2 for 20%
       MoreChanParams.PulsePolarity[ch] = CAEN_DGTZ_PulsePolarityPositive;
       MoreChanParams.ShapedTrigWidth[ch] = 12;
       if (ch == 4)
         {// external trigger into ch2
-          //DPPParams.k[ch] = 1000;
-          //DPPParams.m[ch] = 100;
-          //DPPParams.nspk[ch] = 0;
-          DPPParams.trgho[ch] = 8000;
+          DPPParams.k[ch] = 1000;
+          DPPParams.m[ch] = 100;
+          DPPParams.nspk[ch] = 0;
+          DPPParams.trgho[ch] = 20000;
           MoreChanParams.InputDynamicRange[ch] = 0;
           MoreChanParams.PulsePolarity[ch] = CAEN_DGTZ_PulsePolarityNegative;
           MoreChanParams.ChannelDCOffset[ch] = static_cast<int>((1-0.9)*0xFFFF);
           //DPPParams.b[ch] = 106;
-          DPPParams.M[ch] = 512000;
-          DPPParams.pkho[ch] = 200;
+          DPPParams.M[ch] = 20000;
+          DPPParams.pkho[ch] = 40;
+          DPPParams.ftd[ch] = static_cast<int>(0.4*DPPParams.m[ch]);
           MoreChanParams.ShapedTrigWidth[ch] = 88;
         }
     }
@@ -523,11 +556,13 @@ int main(int argc, char ** argv)
   //value |= 1UL << 27;// Supposedly set TRG-IN as gate. says so in the DT5730 manual, but absent in the DPP-PHA registers document.
   //value |= 30 << 20;// Set coincidence window
   //value |= 1UL << 24;// set majority level
+  value = 0;// disable global trigger
   CheckErrorCode(CAEN_DGTZ_WriteRegister(handle, 0x810C, value),"WriteRegister(0x810C)");
 
   // Front Panel I/O Control
   CheckErrorCode(CAEN_DGTZ_ReadRegister(handle, 0x811C, &value),"ReadRegister(0x811C)");
   //value |= 1UL << 10;// Trigger is synchronized with the whole duration of the TRG-IN signal
+  value &= ~(1UL << 10);// Trigger is synchronised with the edge of TRG-IN
   //value &= ~(1UL << 11);// Trig in processed by motherboard then sent to mezzanines
   value |= 1UL << 11;// Trig in sent directly to mezzanines
   CheckErrorCode(CAEN_DGTZ_WriteRegister(handle, 0x811C, value),"WriteRegister(0x811C");
@@ -543,7 +578,7 @@ int main(int argc, char ** argv)
   //value |= 1 << 10;// Set majority level
   value |= 1UL << 30;// External trigger creates validation signal
   CheckErrorCode(CAEN_DGTZ_WriteRegister(handle, 0x8180, value),"WriteTriggerValidationMask_Couple0");
-  value = 0;
+  CheckErrorCode(CAEN_DGTZ_ReadRegister(handle, 0x8184, &value),"ReadTriggerValidationMask_Couple0");
   value |= 1UL << 1;
   value |= 1UL << 2;
   value &= ~(1UL << 9); value |= 1UL << 8;
@@ -568,7 +603,7 @@ int main(int argc, char ** argv)
 
           // DPP Algorithm Control 2
           CheckErrorCode(CAEN_DGTZ_ReadRegister(handle, 0x10A0+i*0x100, &value),"ReadDPPAlg2");
-          //value |= 1UL << 29;// Enable BLR optimization
+          value |= 1UL << 29;// Enable BLR optimization
           //value &= ~(1UL << 2);// Disable local shaped trigger
           value |= 1UL << 2;// Enable local shaped trigger
           //value |= 1UL << 0; value |= 1UL << 1; // set local shaped trigger mode OR
@@ -580,6 +615,7 @@ int main(int argc, char ** argv)
           value |= 1UL << 6;// Enable local trigger validation mode
           //value &= ~(1UL << 6);// Disable local trigger validation mode)
           value &= ~(1UL << 10); value |= 1UL << 9; value &= ~(1UL << 8);// extended and fine timestamps in extras2
+          value |= 1UL << 19; // tag correlated events in extras
           CheckErrorCode(CAEN_DGTZ_WriteRegister(handle, 0x10A0+i*0x100, value),"WriteDPPAlg2");
 
           // set input dynamic range
@@ -724,6 +760,9 @@ int main(int argc, char ** argv)
   fs << "    External Trigger: " << ExtractBits(value,1,30) << std::endl;
   fs << "    Software Trigger: " << ExtractBits(value,1,31) << std::endl;
 
+  //Synchronise ADC clocks
+  //CheckErrorCode(CAEN_DGTZ_WriteRegister(handle,0x813C,0),"SyncADCClocks");
+
   // Calibrate ADCs
   for (uint32_t ch = 0; ch < 8; ch++)
     {
@@ -746,6 +785,7 @@ int main(int argc, char ** argv)
   TFile * fout = TFile::Open(filename.str().c_str(),"RECREATE");
 
   std::unordered_map<int,std::shared_ptr<TH1I>> h_map;
+  std::unordered_map<int,std::shared_ptr<TH1D>> TTS_map;
 
   // Start acquisition
   uint32_t BufferSize;
@@ -763,6 +803,7 @@ int main(int argc, char ** argv)
 
   std::unordered_map<int,std::shared_ptr<TCanvas>> canv_wf_map;
   std::unordered_map<int,std::shared_ptr<TCanvas>> canv_hist_map;
+  std::unordered_map<int,std::shared_ptr<TCanvas>> canv_TTS_map;
 
   int num_enabled_channels = 0;
   for (int ch = 0; ch < 8; ch++)
@@ -772,8 +813,10 @@ int main(int argc, char ** argv)
         {
           canv_wf_map[ch] = std::make_shared<TCanvas>((static_cast<std::string>("wf_ch")+std::to_string(ch)).c_str(),"",1600,900);
           canv_hist_map[ch] = std::make_shared<TCanvas>((static_cast<std::string>("hist_ch")+std::to_string(ch)).c_str(),"",1600,900);
+          canv_TTS_map[ch] = std::make_shared<TCanvas>((static_cast<std::string>("TTS_ch")+std::to_string(ch)).c_str(),"",1600,900);
         }
       h_map[ch] = std::make_shared<TH1I>((static_cast<std::string>("h_ch")+std::to_string(ch)).c_str(),";ADC Channel;",16384,0,16384);
+      TTS_map[ch] = std::make_shared<TH1D>((static_cast<std::string>("TTS_ch")+std::to_string(ch)).c_str(),";Time (ns);",2000,520,640);
       num_enabled_channels++;
     }
 
@@ -789,40 +832,57 @@ int main(int argc, char ** argv)
       CheckErrorCode(CAEN_DGTZ_GetDPPEvents(handle, buffer, BufferSize, reinterpret_cast<void**>(Events), NumEvents),"GetDPPEvents");
 
 
-      std::unordered_map<uint32_t,int> filled_events;
-      std::unordered_map<uint32_t,std::unordered_map<int,CAEN_DGTZ_DPP_PHA_Event_t>> reinterpret_Events;
+      std::map<uint32_t,int> filled_events;
+      std::map<uint32_t,std::map<int,Ev_t> > reinterpret_Events;
 
-      std::cout << "This Loop: ch0 events = " << NumEvents[0] << " ch2 events = " << NumEvents[2] << " ch4 events = " << NumEvents[4] << std::endl;
+      //std::cout << "This Loop: ch0 events = " << NumEvents[0] << " ch2 events = " << NumEvents[2] << " ch4 events = " << NumEvents[4] << std::endl;
 
       for (int ch = 0; ch < 8; ch++)
         {
           if (!(Params.ChannelMask & (1<<ch))) continue;
 
-          uint32_t energy;
-          for (uint32_t ev = 0; ev < NumEvents[ch]; ev++)
+          uint32_t energy, ev;
+
+          for (ev = 0; ev < NumEvents[ch]; ev++)
             {
               if (filled_events.find(ev) == filled_events.end())
                 {
                   filled_events.insert(std::make_pair(ev,0));
                 }
-              CAEN_DGTZ_DPP_PHA_Event_t thisevent;
+              Ev_t thisevent;
               thisevent.Energy = Events[ch][ev].Energy;
               thisevent.Extras = Events[ch][ev].Extras;
               thisevent.Extras2 = Events[ch][ev].Extras2;
               thisevent.Format = Events[ch][ev].Format;
               thisevent.TimeTag = Events[ch][ev].TimeTag;
-              thisevent.Waveforms = Events[ch][ev].Waveforms;
-              reinterpret_Events[ev][ch] = thisevent;
+              thisevent.ch = ch;
+              thisevent.ev = ev;
+              thisevent.fake_event = ExtractBits(thisevent.Extras,1,3);
+              thisevent.fine_time = ExtractBits(thisevent.Extras2,16,0);
+              thisevent.input_saturation = ExtractBits(thisevent.Extras,1,4);
+              thisevent.lost_event = ExtractBits(thisevent.Extras,1,0);
+              thisevent.lost_trig = ExtractBits(thisevent.Extras,1,5);
+              thisevent.match_coinc = ExtractBits(thisevent.Extras,1,7);
+              thisevent.nomatch_coinc = ExtractBits(thisevent.Extras,1,8);
+              thisevent.rollover_event = ExtractBits(thisevent.Extras,1,1);
+              thisevent.tot_trig = ExtractBits(thisevent.Extras,1,6);
+              thisevent.tt_reset = ExtractBits(thisevent.Extras,1,2);
+              thisevent.ETT_MSB = ExtractBits(thisevent.Extras2,16,16);
+              thisevent.ETT = (thisevent.ETT_MSB << 31) + thisevent.TimeTag;
+              //reinterpret_Events[ev][ch] = thisevent;
               trgCnt[ch]++;
               energy = Events[ch][ev].Energy;
               //uint64_t timetag = Events[ch][ev].TimeTag;
               //int16_t extras = Events[ch][ev].Extras;
               //uint32_t extras2 = Events[ch][ev].Extras2;
-              if ((energy > static_cast<uint32_t>(DPPParams.thr[ch]) && energy < std::pow(2,14)-1))
+              if ((energy > static_cast<uint32_t>(DPPParams.thr[ch]) && energy < std::pow(2,14)-1) && thisevent.match_coinc == 0 && thisevent.nomatch_coinc == 0)
                 {
                   h_map[ch]->Fill(energy);
                   chan_pulses[ch]++;
                   filled_events[ev]++;
+                  reinterpret_Events[ev][ch] = thisevent;
+                  //std::cout << "ch" << ch << " ev" << ev << " Extras" << Events[ch][ev].Extras << " Extras" << thisevent.Extras << " " << thisevent.match_coinc << thisevent.nomatch_coinc << " Extras2=" << Events[ch][ev].Extras2 << " Extras2=" << thisevent.Extras2 << std::endl;
+                  //std::cout << "read event " << ev << " ch" << ch << "  energy=" << reinterpret_Events[ev][ch].Energy << "  TimeTag=" << reinterpret_Events[ev][ch].TimeTag << "  extras2TT=" << ExtractBits(reinterpret_Events[ev][ch].Extras2,16,0) << "  extras2FT=" << ExtractBits(reinterpret_Events[ev][ch].Extras2,16,16) << std::endl;
                 }
               else
                 {
@@ -830,7 +890,7 @@ int main(int argc, char ** argv)
                 }
             }
 
-          if (disp && energy > static_cast<uint32_t>(DPPParams.thr[ch]) && energy < std::pow(2,14)-1)
+          if (disp && energy > static_cast<uint32_t>(DPPParams.thr[ch]) && energy < std::pow(2,14)-1 && reinterpret_Events[ev][ch].match_coinc == 0 && reinterpret_Events[ev][ch].nomatch_coinc == 0)
             {
               int size;
               std::vector<Int_t> time_x;
@@ -941,31 +1001,63 @@ int main(int argc, char ** argv)
               h_map[ch]->Draw();
               canv_hist_map[ch]->Modified();
               canv_hist_map[ch]->Update();
+
+              if (TTS_map[ch]->GetEntries()>0)
+                {
+                  canv_TTS_map[ch]->cd();
+                  TTS_map[ch]->Draw();
+                  canv_TTS_map[ch]->Modified();
+                  canv_TTS_map[ch]->Update();
+                }
             }
         }
 
       int numfilled = 0;
       for (auto fe : filled_events)
         {
+          auto ev0 = reinterpret_Events[fe.first][0];
+          auto ev2 = reinterpret_Events[fe.first][2];
+          auto ev4 = reinterpret_Events[fe.first][4];
+
+          int accept0 = ev0.match_coinc + ev0.nomatch_coinc + (ev0.Energy>0)?0:1, accept2 = ev2.match_coinc + ev2.nomatch_coinc + (ev2.Energy>0)?0:1;
+          uint64_t time0 = ev0.TimeTag, time2 = ev2.TimeTag, time4 = ev4.TimeTag;
+          uint16_t fine0 = ev0.fine_time, fine2 = ev2.fine_time, fine4 = ev4.fine_time;
+          double ts0 = time0+fine0*0.001, ts2 = time2+fine2*0.001, ts4 = time4+fine4*0.001;
+          if (accept0 == 0)
+            {
+              TTS_map[0]->Fill((ts0-ts4)*2);
+            }
+          if (accept2 == 0)
+            {
+              TTS_map[2]->Fill((ts2-ts4)*2);
+            }
+          if (accept0 == 0 && accept2 == 0) numfilled++;
+          /*
           if (fe.second == num_enabled_channels)
             {
               numfilled++;
+
+
+              std::cout << "\nev=" << fe.first << "  "
+                        << "time0=" << time0 << " time2=" << time2 << " time4=" << time4 << " "
+                        << "fine0=" << fine0 << " fine2=" << fine2 << " fine4=" << fine4 << " "
+                           //<< "time04=" << sign04*static_cast<int>(std::max(ts0,ts4)-std::min(ts0,ts4))*2 << " ns, "
+                           //<< "time24=" << sign24*static_cast<int>(std::max(ts2,ts4)-std::min(ts2,ts4))*2 << " ns, "
+                           //<< "time02=" << sign02*static_cast<int>(std::max(ts0,ts2)-std::min(ts0,ts2))*2 << " ns, "
+                        << "ts0=" << ts0 << " ts2=" << ts2 << " ts4=" << ts4 << ", "
+                           //<< "coinc_0=" << reinterpret_Events[fe.first][0].match_coinc << reinterpret_Events[fe.first][0].nomatch_coinc << " coinc_2=" << reinterpret_Events[fe.first][2].match_coinc << reinterpret_Events[fe.first][2].nomatch_coinc << " coinc_4=" << reinterpret_Events[fe.first][4].match_coinc << reinterpret_Events[fe.first][4].nomatch_coinc
+                        << std::endl;
               for (int ch = 0; ch < 8; ch++)
                 {
                   if (!(Params.ChannelMask & (1<<ch))) continue;
-
+                  // [lostev][saturat][ttreset][losttrg][match][nomatch]
+                  std::cout << reinterpret_Events[fe.first][ch].lost_event << reinterpret_Events[fe.first][ch].input_saturation << reinterpret_Events[fe.first][ch].tt_reset << reinterpret_Events[fe.first][ch].lost_trig << reinterpret_Events[fe.first][ch].match_coinc << reinterpret_Events[fe.first][ch].nomatch_coinc << " ";
                 }
-              uint64_t time0 = Events[0][fe.first].TimeTag, time1 = Events[2][fe.first].TimeTag, time2 = Events[4][fe.first].TimeTag;
-              uint32_t extras2_0 = Events[0][fe.first].Extras2, extras2_1 = Events[2][fe.first].Extras2, extras2_2 = Events[4][fe.first].Extras2;
-              uint16_t fine0 = ExtractBits(extras2_0,16,0), fine1 = ExtractBits(extras2_1,16,0), fine2 = ExtractBits(extras2_2,16,0);
-              uint64_t ts0 = time0+fine0, ts1 = time1+fine1, ts2 = time2+fine2;
-              //int sign0 = (ts0 > ts2) ? 1 : -1;
-              //int sign1 = (ts1 > ts2) ? 1 : -1;
-              //std::cout << "time0=" << time0-time0 << ", time1=" << sign*static_cast<int>(std::max(time0,time1)-std::min(time0,time1)) << std::endl;
-              //std::cout << "time0=" << sign0*static_cast<int>(std::max(ts0,ts2)-std::min(ts0,ts2))*2 << " ns, time1=" << sign1*static_cast<int>(std::max(ts1,ts2)-std::min(ts1,ts2))*2 << " ns" << std::endl;
-            }
+              std::cout << std::endl;
+
+            }*/
         }
-      std::cout << "numfilled=" << numfilled << std::endl;
+      //std::cout << "numfilled=" << numfilled << std::endl;
 
       if (count_events > 0 && i_evt >= count_events) break;
       auto now_tp = std::chrono::system_clock::now();
@@ -1008,8 +1100,8 @@ int main(int argc, char ** argv)
   for (int ch = 0; ch < 8; ch++)
     {
       if (!(Params.ChannelMask & (1<<ch))) continue;
-      if (h_map[ch]->GetEntries() < 1) continue;
-      h_map[ch]->Write();
+      if (h_map[ch]->GetEntries() > 0) h_map[ch]->Write();
+      if (TTS_map[ch]->GetEntries() > 0) TTS_map[ch]->Write();
     }
   fout->Close();
   fs.close();
