@@ -21,6 +21,7 @@
 #include <fstream>
 #include <unordered_map>
 #include <memory>
+#include <curses.h>
 
 #include "date.h"
 
@@ -846,6 +847,12 @@ int main(int argc, char ** argv)
   std::array<int,1024> goodEvent{};
   std::array<std::array<Ev_t,8>,1024> reinterpret_Events;
 
+  std::array<int,8> intime_purCnt{};
+  std::array<int,8> outtime_purCnt{};
+  std::array<int,8> intime_matchCnt{};
+  std::array<int,8> outtime_trgCnt{};
+  int intime_trgCnt_ch4 = 0;
+
   while(keep_continue)
     {
       CheckErrorCode(CAEN_DGTZ_ReadData(handle, CAEN_DGTZ_SLAVE_TERMINATED_READOUT_MBLT, buffer, &BufferSize),"ReadData");
@@ -862,24 +869,43 @@ int main(int argc, char ** argv)
 
           for (ev = 0; ev < NumEvents[ch]; ++ev)
             {
+              if (ev > 1023) break;
               auto readevent = Events[ch][ev];
               ++trgCnt[ch];
               energy = readevent.Energy;
               int match = ExtractBits(readevent.Extras,2,7);// read match_coinc and nomatch_coinc together for speed
-
-              if (energy > static_cast<uint32_t>(DPPParams.thr[ch]) && energy < 16383 && match == 0)
+              if (energy > static_cast<uint32_t>(DPPParams.thr[ch]) && energy < 16383)
                 {
-                  //Ev_t thisevent(ev,ch,readevent);
-                  h_vec[ch]->Fill(energy);
-                  ++chan_pulses[ch];
-                  reinterpret_Events[ev][ch] = Ev_t(ev,ch,readevent);
-                  goodEvent[ev]=1;
-                  saveev = ev;
-                  if (ev > maxEvent) maxEvent = ev;
+                  if (match == 0)
+                    {
+                      h_vec[ch]->Fill(energy);
+                      ++chan_pulses[ch];
+                      reinterpret_Events[ev][ch] = Ev_t(ev,ch,readevent);
+                      goodEvent[ev]=1;
+                      saveev = ev;
+                      if (ev > maxEvent) maxEvent = ev;
+                      ++intime_matchCnt[ch];
+                      if (ch==4) ++intime_trgCnt_ch4;
+                    }
+                  else
+                    {
+                      ++outtime_trgCnt[ch];
+                      ++purCnt[ch];
+                    }
                 }
               else
                 {
-                  ++purCnt[ch];
+                  if (match == 0)
+                    {
+                      ++intime_purCnt[ch];
+                      ++purCnt[ch];
+                    }
+                  else
+                    {
+                      ++outtime_trgCnt[ch];
+                      ++outtime_purCnt[ch];
+                      ++purCnt[ch];
+                    }
                 }
             }
 
@@ -1018,6 +1044,7 @@ int main(int argc, char ** argv)
           uint64_t time0 = ev0.TimeTag, time2 = ev2.TimeTag, time4 = ev4.TimeTag;
           uint16_t fine0 = ev0.fine_time, fine2 = ev2.fine_time, fine4 = ev4.fine_time;
           double ts0 = time0+fine0*0.001, ts2 = time2+fine2*0.001, ts4 = time4+fine4*0.001;
+          //std::cout << "ts0=" << ts0 << "  ts2=" << ts2 << "  ts4=" << ts4 << std::endl;
           if (accept0 == 0)
             {
               TTS_vec[0]->Fill((ts0-ts4)*2);// 2ns clock time
@@ -1036,29 +1063,43 @@ int main(int argc, char ** argv)
       i_sec = std::chrono::duration_cast<std::chrono::seconds>(now_tp-start_tp).count();
       if (count_seconds > 0 && i_sec > count_seconds) break;
 
-      auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now_tp-PrevRateTime).count();
+      double elapsed = static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(now_tp-PrevRateTime).count());
       if (elapsed > 1000)
         {
-          std::cout << "\r" << "Event " << i_evt << ", Pulses Recorded = (";
+          std::cout << "\r" << "Ev " << i_evt << ", Readout rate = " << static_cast<double>(Nb)/(static_cast<double>(elapsed*1048.576f)) << " MB/s\e[K\n";
           for (int ch = 0; ch < 8; ++ch)
             {
               if (!(Params.ChannelMask & (1<<ch))) continue;
-              std::cout << std::setw(7) << chan_pulses[ch] << ",";
-            }
-          std::cout << "\b), Readout Rate = " << std::setw(7) << static_cast<double>(Nb)/(static_cast<double>(elapsed*1048.576f)) << " MB/s, ";
-          std::cout << "Trig/Pileup Rate = (";
-          for (int ch = 0; ch < 8; ++ch)
-            {
-              if (!(Params.ChannelMask & (1<<ch))) continue;
-              std::cout << std::setw(8) << static_cast<double>(trgCnt[ch])/static_cast<double>(elapsed) << " kHz / " << std::setw(8) << static_cast<double>(purCnt[ch]*100)/static_cast<double>(trgCnt[ch]) << "%,";
+              std::cout << "     Ch" << ch << " pulses = " << std::setw(8) << chan_pulses[ch] << ", "
+                        << "Total Trig Rate = " << std::fixed << std::setprecision(3) << std::setw(6) << static_cast<double>(trgCnt[ch])/static_cast<double>(elapsed) << " kHz, "
+                        << "In-time Trig Rate = " << std::fixed << std::setprecision(3) << std::setw(6) << static_cast<double>(intime_matchCnt[ch])/static_cast<double>(elapsed) << " kHz, "
+                        << "Out-time Trig Rate = " << std::fixed << std::setprecision(3) << std::setw(6) << static_cast<double>(outtime_trgCnt[ch])/static_cast<double>(elapsed) << " kHz, "
+                        << "Total Pile-up = " << std::fixed << std::setprecision(2) << std::setw(5) << static_cast<double>(purCnt[ch]*100)/static_cast<double>(trgCnt[ch]) << "%, "
+                        << "In-time Pile-up = " << std::fixed << std::setprecision(2) << std::setw(5) << static_cast<double>(intime_purCnt[ch]*100)/static_cast<double>(intime_trgCnt_ch4) << "%, "
+                        << "Out-time Pile-up = " << std::fixed << std::setprecision(2) << std::setw(5) << static_cast<double>(outtime_purCnt[ch]*100)/static_cast<double>(outtime_trgCnt[ch]) << "%\e[K\n";
               trgCnt[ch] = 0;
               purCnt[ch] = 0;
+              intime_purCnt[ch] = 0;
+              outtime_purCnt[ch] = 0;
+              intime_matchCnt[ch] = 0;
+              outtime_trgCnt[ch] = 0;
             }
-          std::cout << "\b)" << std::flush;
-
+          intime_trgCnt_ch4 = 0;
           Nb = 0;
+          std::cout << "\r\e[A";
+          for (int ch = 0; ch < 8; ++ch)
+            {
+              if (!(Params.ChannelMask & (1<<ch))) continue;
+              std::cout << "\e[A";
+            }
+          std::cout << std::flush;
           PrevRateTime = std::chrono::system_clock::now();
         }
+    }
+  for (int ch = 0; ch < 8; ++ch)
+    {
+      if (!(Params.ChannelMask & (1<<ch))) continue;
+      std::cout << "\n";
     }
 
   auto end_tp = std::chrono::system_clock::now();
