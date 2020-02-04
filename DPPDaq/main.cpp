@@ -495,7 +495,7 @@ int main(int argc, char ** argv)
   for (int ch = 0; ch < 8; ++ch)
     {
       if (!(Params.ChannelMask & (1<<ch))) continue;
-      DPPParams.thr[ch] = 25;// discriminator threshold (LSB)
+      DPPParams.thr[ch] = 100;// discriminator threshold (LSB)
       DPPParams.k[ch] = 6000;// trap rise time (ns)
       DPPParams.m[ch] = 1000;// trap flat top (ns)
       DPPParams.M[ch] = (ch==0)?120000:115000;// Exponential decay time of the preamp (ns)
