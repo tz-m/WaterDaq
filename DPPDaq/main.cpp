@@ -203,8 +203,8 @@ void RunManager::CloseFiles()
       for (int i = 0; i < 8; ++i)
         {
           if (!(channels & (1<<i))) continue;
-          if (h_vec_init && h_vec[i]->GetEntries() > 0) h_vec[i]->Write();
-          if (TTS_vec_init && TTS_vec[i]->GetEntries() > 0) TTS_vec[i]->Write();
+          if (i != 4 && h_vec_init && h_vec[i]->GetEntries() > 0) h_vec[i]->Write();
+          if (i != 4 && TTS_vec_init && TTS_vec[i]->GetEntries() > 0) TTS_vec[i]->Write();
         }
       starttimevec.Write("starttime");
       endtimevec.Write("endtime");
@@ -455,7 +455,7 @@ int main(int argc, char ** argv)
         }
     }
 
-    RunManager rm;
+  RunManager rm;
 
   if (disp) rm.configfile << "Display options: " << dispopt << std::endl;
   rm.configfile << setupnote.str();
@@ -917,7 +917,7 @@ int main(int argc, char ** argv)
                 {
                   if (match == 0)
                     {
-                      rm.h_vec[ch]->Fill(energy);
+                      if (ch != 4) rm.h_vec[ch]->Fill(energy);
                       ++chan_pulses[ch];
                       reinterpret_Events[ev][ch] = Ev_t(ev,ch,readevent);
                       goodEvent[ev]=1;
@@ -1102,7 +1102,7 @@ int main(int argc, char ** argv)
       double elapsed = static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(now_tp-PrevRateTime).count());
       if (elapsed > 1000)
         {
-          std::cout << "\r" << "Ev " << i_evt << ", Readout rate = " << static_cast<double>(Nb)/(static_cast<double>(elapsed*1048.576f)) << " MB/s\e[K\n";
+          std::cout << "\r" << "Ev " << i_evt << ", Readout rate = " << static_cast<double>(Nb)/(static_cast<double>(elapsed*1048.576f)) << " MB/s, Elapsed time = " << i_sec << " s\e[K\n";
           for (int ch = 0; ch < 8; ++ch)
             {
               if (!(Params.ChannelMask & (1<<ch))) continue;
