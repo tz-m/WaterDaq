@@ -207,6 +207,10 @@ void RunManager::CloseFiles()
           if (i != 4 && TTS_vec_init && TTS_vec[i]->GetEntries() > 0) TTS_vec[i]->Write();
         }
       starttimevec.Write("starttime");
+      auto end_tp = std::chrono::system_clock::now();
+      TVectorD endtime = MakeTimeVec(end_tp);
+      endtimevec.ResizeTo(endtime);
+      endtimevec = endtime;
       endtimevec.Write("endtime");
       fout->Close();
     }
